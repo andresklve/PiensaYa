@@ -41,6 +41,7 @@ describe('AuthService', () => {
           JWT_REFRESH_EXPIRES_SECONDS: '604800',
           JWT_REFRESH_SECRET: 'refresh-secret',
           USER_SERVICE_URL: 'http://localhost:3001',
+          INTERNAL_SERVICE_TOKEN: 'internal-secret',
         };
         return values[key];
       }),
@@ -93,6 +94,11 @@ describe('AuthService', () => {
       expect(httpService.post).toHaveBeenCalledWith(
         'http://localhost:3001/users',
         expect.objectContaining({ userId: '1' }),
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'x-internal-token': expect.any(String),
+          }),
+        }),
       );
     });
   });

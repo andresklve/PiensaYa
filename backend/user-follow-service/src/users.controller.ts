@@ -22,6 +22,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { FollowerItemDto } from './dto/follower-item.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { InternalServiceGuard } from './guards/internal-service.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { JwtPayload } from './strategies/jwt.strategy';
 
@@ -33,11 +34,13 @@ export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
   @Post()
+  @UseGuards(InternalServiceGuard)
   @ApiOperation({
     summary:
       'Crear el perfil de un usuario (llamado internamente por el Auth Service)',
   })
   @ApiResponse({ status: 201, type: UserProfileResponseDto })
+  @ApiResponse({ status: 401, description: 'Llamada inter-servicio no autorizada' })
   @ApiResponse({ status: 409, description: 'El perfil ya existe' })
   createProfile(
     @Body() dto: CreateUserProfileDto,
