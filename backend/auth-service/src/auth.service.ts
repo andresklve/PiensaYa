@@ -166,12 +166,22 @@ export class AuthService {
     const baseUrl = this.config.get<string>('USER_SERVICE_URL');
 
     firstValueFrom(
-      this.httpService.post(`${baseUrl}/users`, {
-        userId,
-        email: dto.email,
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-      }),
+      this.httpService.post(
+        `${baseUrl}/users`,
+        {
+          userId,
+          email: dto.email,
+          firstName: dto.firstName,
+          lastName: dto.lastName,
+        },
+        {
+          headers: {
+            'x-internal-token': this.config.get<string>(
+              'INTERNAL_SERVICE_TOKEN',
+            ),
+          },
+        },
+      ),
     ).catch((error) => {
       this.logger.warn(
         `No se pudo notificar al User Service para crear el perfil de ${userId}: ${error.message}`,
