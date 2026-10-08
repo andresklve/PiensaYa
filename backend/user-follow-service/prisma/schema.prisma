@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("USER_DATABASE_URL")
+}
+
+model UserProfile {
+  userId    String   @id
+  firstName String
+  lastName  String
+  bio       String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  followers Follow[] @relation("Followers")
+  following Follow[] @relation("Following")
+
+  @@map("user_profiles")
+}
+
+model Follow {
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  UserProfile @relation("Following", fields: [followerId], references: [userId])
+  following UserProfile @relation("Followers", fields: [followingId], references: [userId])
+
+  @@id([followerId, followingId])
+  @@map("follows")
+}
