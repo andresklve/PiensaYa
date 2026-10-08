@@ -5,6 +5,9 @@ export class AuthResponseDto {
   accessToken: string;
 
   @ApiProperty()
+  refreshToken: string;
+
+  @ApiProperty()
   userId: string;
 
   @ApiProperty()

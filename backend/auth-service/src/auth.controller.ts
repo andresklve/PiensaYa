@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -16,6 +17,8 @@ import {
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -42,6 +45,41 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Credenciales inválidas' })
   login(@Body() dto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(dto);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Renovar el access token usando el refresh token' })
+  @ApiResponse({ status: 200, type: AuthResponseDto })
+  @ApiResponse({ status: 401, description: 'Refresh token inválido o expirado' })
+  refresh(@Body() dto: RefreshTokenDto): Promise<AuthResponseDto> {
+    return this.authService.refresh(dto);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cerrar sesión (invalida el refresh token)' })
+  @ApiResponse({ status: 204 })
+  logout(
+    @CurrentUser() user: { userId: string; email: string; role: JwtPayload['role'] },
+  ): Promise<void> {
+    return this.authService.logout(user.userId);
+  }
+
+  @Patch('change-password')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cambiar la contraseña del usuario autenticado' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
+  changePassword(
+    @CurrentUser() user: { userId: string; email: string; role: JwtPayload['role'] },
+    @Body() dto: ChangePasswordDto,
+  ): Promise<void> {
+    return this.authService.changePassword(user.userId, dto);
   }
 
   @Get('me')
