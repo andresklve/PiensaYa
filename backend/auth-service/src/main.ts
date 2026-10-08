@@ -17,6 +17,7 @@ async function bootstrap() {
     .setTitle('PiensaYa - Auth Service')
     .setDescription('Registro, login y emisión de JWT')
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('docs', app, document);

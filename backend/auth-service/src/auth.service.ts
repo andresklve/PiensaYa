@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { Role } from '@prisma/client';
 import { PrismaService } from './prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -37,7 +38,7 @@ export class AuthService {
       },
     });
 
-    const accessToken = await this.signToken(user.id, user.email);
+    const accessToken = await this.signToken(user.id, user.email, user.role);
 
     return { accessToken, userId: user.id, email: user.email };
   }
@@ -60,12 +61,16 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    const accessToken = await this.signToken(user.id, user.email);
+    const accessToken = await this.signToken(user.id, user.email, user.role);
 
     return { accessToken, userId: user.id, email: user.email };
   }
 
-  private signToken(userId: string, email: string): Promise<string> {
-    return this.jwtService.signAsync({ sub: userId, email });
+  private signToken(
+    userId: string,
+    email: string,
+    role: Role,
+  ): Promise<string> {
+    return this.jwtService.signAsync({ sub: userId, email, role });
   }
 }
