@@ -5,6 +5,9 @@ export class FollowerItemDto {
   userId: string;
 
   @ApiProperty()
+  username: string;
+
+  @ApiProperty()
   firstName: string;
 
   @ApiProperty()

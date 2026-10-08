@@ -9,6 +9,7 @@ datasource db {
 
 model UserProfile {
   userId    String   @id
+  username  String   @unique
   firstName String
   lastName  String
   bio       String?

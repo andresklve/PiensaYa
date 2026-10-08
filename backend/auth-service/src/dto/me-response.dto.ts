@@ -6,7 +6,7 @@ export class MeResponseDto {
   userId: string;
 
   @ApiProperty()
-  email: string;
+  username: string;
 
   @ApiProperty({ enum: Role })
   role: Role;

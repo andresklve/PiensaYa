@@ -16,15 +16,12 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { PaginatedPostsDto, PostResponseDto } from './dto/post-response.dto';
 import { CommentResponseDto } from './dto/comment-response.dto';
 import { PostEventsPublisher } from './events/post-events.publisher';
+import type { AuthUser } from './strategies/jwt.strategy';
+
+export type { AuthUser };
 
 export const TWEET_MAX_LENGTH = 280;
 const EXCERPT_LENGTH = 200;
-
-export interface AuthUser {
-  userId: string;
-  email: string;
-  role: 'USUARIO' | 'ADMIN';
-}
 
 type LeanPost = Post & { _id: Types.ObjectId };
 type LeanComment = Comment & { _id: Types.ObjectId };

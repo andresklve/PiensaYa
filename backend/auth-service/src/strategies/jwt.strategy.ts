@@ -6,7 +6,13 @@ import { Role } from '@prisma/client';
 
 export interface JwtPayload {
   sub: string;
-  email: string;
+  username: string;
+  role: Role;
+}
+
+export interface AuthUser {
+  userId: string;
+  username: string;
   role: Role;
 }
 
@@ -20,7 +26,11 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: JwtPayload) {
-    return { userId: payload.sub, email: payload.email, role: payload.role };
+  validate(payload: JwtPayload): AuthUser {
+    return {
+      userId: payload.sub,
+      username: payload.username,
+      role: payload.role,
+    };
   }
 }

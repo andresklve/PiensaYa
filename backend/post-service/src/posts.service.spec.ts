@@ -19,9 +19,9 @@ describe('PostsService', () => {
   let reactionModel: Record<string, jest.Mock>;
   let events: { postCreated: jest.Mock; postDeleted: jest.Mock };
 
-  const author: AuthUser = { userId: 'author-1', email: 'a@a.com', role: 'USUARIO' };
-  const other: AuthUser = { userId: 'other-1', email: 'b@b.com', role: 'USUARIO' };
-  const admin: AuthUser = { userId: 'admin-1', email: 'c@c.com', role: 'ADMIN' };
+  const author: AuthUser = { userId: 'author-1', username: 'autor', role: 'USUARIO' };
+  const other: AuthUser = { userId: 'other-1', username: 'otro', role: 'USUARIO' };
+  const admin: AuthUser = { userId: 'admin-1', username: 'admin', role: 'ADMIN' };
 
   const postId = new Types.ObjectId();
   const existingPost = {

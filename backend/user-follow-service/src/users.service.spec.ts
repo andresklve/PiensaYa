@@ -11,6 +11,7 @@ describe('UsersService', () => {
   let prisma: {
     userProfile: {
       findUnique: jest.Mock;
+      findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
     };
@@ -27,6 +28,7 @@ describe('UsersService', () => {
     prisma = {
       userProfile: {
         findUnique: jest.fn(),
+        findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
       },
@@ -43,22 +45,24 @@ describe('UsersService', () => {
   });
 
   describe('createProfile', () => {
-    it('lanza ConflictException si el perfil ya existe', async () => {
-      prisma.userProfile.findUnique.mockResolvedValue({ userId: '1' });
+    it('lanza ConflictException si el perfil o el username ya existen', async () => {
+      prisma.userProfile.findFirst.mockResolvedValue({ userId: '1' });
 
       await expect(
         usersService.createProfile({
           userId: '1',
+          username: 'juan',
           firstName: 'Juan',
           lastName: 'Perez',
         }),
       ).rejects.toThrow(ConflictException);
     });
 
-    it('crea el perfil cuando no existe', async () => {
-      prisma.userProfile.findUnique.mockResolvedValue(null);
+    it('crea el perfil con su username cuando no existe', async () => {
+      prisma.userProfile.findFirst.mockResolvedValue(null);
       prisma.userProfile.create.mockResolvedValue({
         userId: '1',
+        username: 'juan',
         firstName: 'Juan',
         lastName: 'Perez',
         bio: null,
@@ -67,12 +71,29 @@ describe('UsersService', () => {
 
       const result = await usersService.createProfile({
         userId: '1',
+        username: 'juan',
         firstName: 'Juan',
         lastName: 'Perez',
       });
 
-      expect(result.userId).toBe('1');
+      expect(prisma.userProfile.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ username: 'juan' }),
+      });
+      expect(result.username).toBe('juan');
       expect(result.followersCount).toBe(0);
+    });
+  });
+
+  describe('getProfileByUsername', () => {
+    it('busca sin importar mayúsculas', async () => {
+      prisma.userProfile.findUnique.mockResolvedValue(null);
+
+      await expect(usersService.getProfileByUsername('  JUAN ')).rejects.toThrow(
+        NotFoundException,
+      );
+      expect(prisma.userProfile.findUnique).toHaveBeenCalledWith({
+        where: { username: 'juan' },
+      });
     });
   });
 

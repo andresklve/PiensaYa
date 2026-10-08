@@ -24,9 +24,7 @@ import { FollowerItemDto } from './dto/follower-item.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { InternalServiceGuard } from './guards/internal-service.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { JwtPayload } from './strategies/jwt.strategy';
-
-type AuthUser = { userId: string; email: string; role: JwtPayload['role'] };
+import type { AuthUser } from './strategies/jwt.strategy';
 
 @ApiTags('users')
 @Controller('users')
@@ -67,6 +65,16 @@ export class UsersController {
     @Body() dto: UpdateProfileDto,
   ): Promise<UserProfileResponseDto> {
     return this.usersService.updateProfile(user.userId, dto);
+  }
+
+  @Get('by-username/:username')
+  @ApiOperation({ summary: 'Obtener el perfil público por @username' })
+  @ApiResponse({ status: 200, type: UserProfileResponseDto })
+  @ApiResponse({ status: 404, description: 'Perfil no encontrado' })
+  getProfileByUsername(
+    @Param('username') username: string,
+  ): Promise<UserProfileResponseDto> {
+    return this.usersService.getProfileByUsername(username);
   }
 
   @Get(':userId')

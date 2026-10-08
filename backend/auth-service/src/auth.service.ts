@@ -33,30 +33,30 @@ export class AuthService {
 
   async register(dto: RegisterDto): Promise<AuthResponseDto> {
     const existingUser = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { username: dto.username },
     });
 
     if (existingUser) {
-      throw new ConflictException('Ya existe una cuenta con este correo');
+      throw new ConflictException('Ese nombre de usuario ya está en uso');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, SALT_ROUNDS);
 
     const user = await this.prisma.user.create({
       data: {
-        email: dto.email,
+        username: dto.username,
         passwordHash,
       },
     });
 
     this.notifyUserService(user.id, dto);
 
-    return this.issueTokens(user.id, user.email, user.role);
+    return this.issueTokens(user.id, user.username, user.role);
   }
 
   async login(dto: LoginDto): Promise<AuthResponseDto> {
     const user = await this.prisma.user.findUnique({
-      where: { email: dto.email },
+      where: { username: dto.username },
     });
 
     if (!user) {
@@ -72,7 +72,7 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
-    return this.issueTokens(user.id, user.email, user.role);
+    return this.issueTokens(user.id, user.username, user.role);
   }
 
   async refresh(dto: RefreshTokenDto): Promise<AuthResponseDto> {
@@ -102,7 +102,7 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token inválido');
     }
 
-    return this.issueTokens(user.id, user.email, user.role);
+    return this.issueTokens(user.id, user.username, user.role);
   }
 
   async logout(userId: string): Promise<void> {
@@ -139,10 +139,10 @@ export class AuthService {
 
   private async issueTokens(
     userId: string,
-    email: string,
+    username: string,
     role: Role,
   ): Promise<AuthResponseDto> {
-    const payload: JwtPayload = { sub: userId, email, role };
+    const payload: JwtPayload = { sub: userId, username, role };
 
     const accessToken = await this.jwtService.signAsync(payload, {
       expiresIn: Number(this.config.get('JWT_ACCESS_EXPIRES_SECONDS')),
@@ -159,7 +159,7 @@ export class AuthService {
       data: { refreshTokenHash },
     });
 
-    return { accessToken, refreshToken, userId, email };
+    return { accessToken, refreshToken, userId, username };
   }
 
   private notifyUserService(userId: string, dto: RegisterDto): void {
@@ -170,7 +170,7 @@ export class AuthService {
         `${baseUrl}/users`,
         {
           userId,
-          email: dto.email,
+          username: dto.username,
           firstName: dto.firstName,
           lastName: dto.lastName,
         },

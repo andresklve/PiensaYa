@@ -24,9 +24,7 @@ import {
 } from './dto/message-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
-import type { JwtPayload } from './strategies/jwt.strategy';
-
-type AuthUser = { userId: string; email: string; role: JwtPayload['role'] };
+import type { AuthUser } from './strategies/jwt.strategy';
 
 @ApiTags('chat')
 @ApiBearerAuth()
