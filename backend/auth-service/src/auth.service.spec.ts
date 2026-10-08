@@ -59,12 +59,12 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('lanza ConflictException si el correo ya existe', async () => {
-      prisma.user.findUnique.mockResolvedValue({ id: '1', email: 'a@a.com' });
+    it('lanza ConflictException si el username ya existe', async () => {
+      prisma.user.findUnique.mockResolvedValue({ id: '1', username: 'carlos' });
 
       await expect(
         authService.register({
-          email: 'a@a.com',
+          username: 'carlos',
           password: 'Password123',
           firstName: 'Juan',
           lastName: 'Perez',
@@ -72,17 +72,17 @@ describe('AuthService', () => {
       ).rejects.toThrow(ConflictException);
     });
 
-    it('crea el usuario y devuelve tokens cuando el correo no existe', async () => {
+    it('crea el usuario y devuelve tokens cuando el username no existe', async () => {
       prisma.user.findUnique.mockResolvedValue(null);
       prisma.user.create.mockResolvedValue({
         id: '1',
-        email: 'nuevo@upc.edu.pe',
+        username: 'nuevo_user',
         role: 'USUARIO',
       });
       prisma.user.update.mockResolvedValue({});
 
       const result = await authService.register({
-        email: 'nuevo@upc.edu.pe',
+        username: 'nuevo_user',
         password: 'Password123',
         firstName: 'Juan',
         lastName: 'Perez',
@@ -90,10 +90,14 @@ describe('AuthService', () => {
 
       expect(result.accessToken).toBe('signed.jwt.token');
       expect(result.userId).toBe('1');
-      expect(prisma.user.create).toHaveBeenCalled();
+      expect(result.username).toBe('nuevo_user');
+      expect(jwtService.signAsync).toHaveBeenCalledWith(
+        { sub: '1', username: 'nuevo_user', role: 'USUARIO' },
+        expect.anything(),
+      );
       expect(httpService.post).toHaveBeenCalledWith(
         'http://localhost:3001/users',
-        expect.objectContaining({ userId: '1' }),
+        expect.objectContaining({ userId: '1', username: 'nuevo_user' }),
         expect.objectContaining({
           headers: expect.objectContaining({
             'x-internal-token': expect.any(String),
@@ -108,7 +112,7 @@ describe('AuthService', () => {
       prisma.user.findUnique.mockResolvedValue(null);
 
       await expect(
-        authService.login({ email: 'noexiste@upc.edu.pe', password: 'x' }),
+        authService.login({ username: 'noexiste', password: 'x' }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -116,13 +120,13 @@ describe('AuthService', () => {
       const passwordHash = await bcrypt.hash('correcta', 10);
       prisma.user.findUnique.mockResolvedValue({
         id: '1',
-        email: 'a@a.com',
+        username: 'carlos',
         passwordHash,
         role: 'USUARIO',
       });
 
       await expect(
-        authService.login({ email: 'a@a.com', password: 'incorrecta' }),
+        authService.login({ username: 'carlos', password: 'incorrecta' }),
       ).rejects.toThrow(UnauthorizedException);
     });
 
@@ -130,14 +134,14 @@ describe('AuthService', () => {
       const passwordHash = await bcrypt.hash('correcta', 10);
       prisma.user.findUnique.mockResolvedValue({
         id: '1',
-        email: 'a@a.com',
+        username: 'carlos',
         passwordHash,
         role: 'USUARIO',
       });
       prisma.user.update.mockResolvedValue({});
 
       const result = await authService.login({
-        email: 'a@a.com',
+        username: 'carlos',
         password: 'correcta',
       });
 

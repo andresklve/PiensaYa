@@ -23,7 +23,7 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { MeResponseDto } from './dto/me-response.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
-import { JwtPayload } from './strategies/jwt.strategy';
+import type { AuthUser } from './strategies/jwt.strategy';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -33,7 +33,7 @@ export class AuthController {
   @Post('register')
   @ApiOperation({ summary: 'Registrar un nuevo usuario' })
   @ApiResponse({ status: 201, type: AuthResponseDto })
-  @ApiResponse({ status: 409, description: 'El correo ya está registrado' })
+  @ApiResponse({ status: 409, description: 'El nombre de usuario ya está en uso' })
   register(@Body() dto: RegisterDto): Promise<AuthResponseDto> {
     return this.authService.register(dto);
   }
@@ -62,9 +62,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cerrar sesión (invalida el refresh token)' })
   @ApiResponse({ status: 204 })
-  logout(
-    @CurrentUser() user: { userId: string; email: string; role: JwtPayload['role'] },
-  ): Promise<void> {
+  logout(@CurrentUser() user: AuthUser): Promise<void> {
     return this.authService.logout(user.userId);
   }
 
@@ -76,7 +74,7 @@ export class AuthController {
   @ApiResponse({ status: 204 })
   @ApiResponse({ status: 401, description: 'Contraseña actual incorrecta' })
   changePassword(
-    @CurrentUser() user: { userId: string; email: string; role: JwtPayload['role'] },
+    @CurrentUser() user: AuthUser,
     @Body() dto: ChangePasswordDto,
   ): Promise<void> {
     return this.authService.changePassword(user.userId, dto);
@@ -88,10 +86,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Obtener el usuario autenticado actual' })
   @ApiResponse({ status: 200, type: MeResponseDto })
   @ApiResponse({ status: 401, description: 'Token inválido o ausente' })
-  me(
-    @CurrentUser()
-    user: { userId: string; email: string; role: JwtPayload['role'] },
-  ): MeResponseDto {
+  me(@CurrentUser() user: AuthUser): MeResponseDto {
     return user;
   }
 }

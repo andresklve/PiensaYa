@@ -29,6 +29,9 @@ export class FeedItemDto {
   @ApiPropertyOptional()
   authorName?: string;
 
+  @ApiPropertyOptional()
+  authorUsername?: string;
+
   @ApiProperty({ enum: ['POST', 'TWEET'] })
   type: 'POST' | 'TWEET';
 

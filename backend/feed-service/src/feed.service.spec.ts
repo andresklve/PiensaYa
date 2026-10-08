@@ -8,7 +8,7 @@ describe('FeedService', () => {
   let service: FeedService;
   let pipeline: Record<string, jest.Mock>;
   let redis: Record<string, jest.Mock>;
-  let usersClient: { getFollowerIds: jest.Mock; getDisplayName: jest.Mock };
+  let usersClient: { getFollowerIds: jest.Mock; getAuthorInfo: jest.Mock };
 
   const event: PostCreatedEvent = {
     postId: 'p1',
@@ -35,7 +35,7 @@ describe('FeedService', () => {
     };
     usersClient = {
       getFollowerIds: jest.fn().mockResolvedValue(['f1', 'f2']),
-      getDisplayName: jest.fn().mockResolvedValue('Ana Gomez'),
+      getAuthorInfo: jest.fn().mockResolvedValue({ name: 'Ana Gomez', username: 'ana' }),
     };
 
     service = new FeedService(
@@ -56,7 +56,7 @@ describe('FeedService', () => {
       }
       expect(pipeline.set).toHaveBeenCalledWith(
         postKey('p1'),
-        expect.stringContaining('"authorName":"Ana Gomez"'),
+        expect.stringContaining('"authorName":"Ana Gomez","authorUsername":"ana"'),
       );
     });
 

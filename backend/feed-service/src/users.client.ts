@@ -8,8 +8,14 @@ interface FollowerItem {
 }
 
 interface UserProfile {
+  username: string;
   firstName: string;
   lastName: string;
+}
+
+export interface AuthorInfo {
+  name: string;
+  username: string;
 }
 
 @Injectable()
@@ -29,7 +35,7 @@ export class UsersClient {
     return data.map((f) => f.userId);
   }
 
-  async getDisplayName(userId: string): Promise<string | undefined> {
+  async getAuthorInfo(userId: string): Promise<AuthorInfo | undefined> {
     try {
       const { data } = await firstValueFrom(
         this.http.get<UserProfile>(
@@ -37,7 +43,10 @@ export class UsersClient {
           { timeout: 3000 },
         ),
       );
-      return `${data.firstName} ${data.lastName}`;
+      return {
+        name: `${data.firstName} ${data.lastName}`,
+        username: data.username,
+      };
     } catch {
       return undefined;
     }

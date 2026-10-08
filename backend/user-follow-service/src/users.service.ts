@@ -17,8 +17,8 @@ export class UsersService {
   async createProfile(
     dto: CreateUserProfileDto,
   ): Promise<UserProfileResponseDto> {
-    const existing = await this.prisma.userProfile.findUnique({
-      where: { userId: dto.userId },
+    const existing = await this.prisma.userProfile.findFirst({
+      where: { OR: [{ userId: dto.userId }, { username: dto.username }] },
     });
 
     if (existing) {
@@ -28,6 +28,7 @@ export class UsersService {
     const profile = await this.prisma.userProfile.create({
       data: {
         userId: dto.userId,
+        username: dto.username,
         firstName: dto.firstName,
         lastName: dto.lastName,
       },
@@ -44,6 +45,20 @@ export class UsersService {
     ]);
 
     return this.toResponseDto(profile, followersCount, followingCount);
+  }
+
+  async getProfileByUsername(
+    username: string,
+  ): Promise<UserProfileResponseDto> {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { username: username.trim().toLowerCase() },
+    });
+
+    if (!profile) {
+      throw new NotFoundException('Perfil no encontrado');
+    }
+
+    return this.getProfile(profile.userId);
   }
 
   async updateProfile(
@@ -130,6 +145,7 @@ export class UsersService {
   private toResponseDto(
     profile: {
       userId: string;
+      username: string;
       firstName: string;
       lastName: string;
       bio: string | null;
@@ -140,6 +156,7 @@ export class UsersService {
   ): UserProfileResponseDto {
     return {
       userId: profile.userId,
+      username: profile.username,
       firstName: profile.firstName,
       lastName: profile.lastName,
       bio: profile.bio,
@@ -151,12 +168,14 @@ export class UsersService {
 
   private toFollowerItem(profile: {
     userId: string;
+    username: string;
     firstName: string;
     lastName: string;
     avatarUrl: string | null;
   }): FollowerItemDto {
     return {
       userId: profile.userId,
+      username: profile.username,
       firstName: profile.firstName,
       lastName: profile.lastName,
       avatarUrl: profile.avatarUrl,

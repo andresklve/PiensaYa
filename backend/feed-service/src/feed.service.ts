@@ -25,12 +25,13 @@ export class FeedService {
 
   async fanOut(event: PostCreatedEvent): Promise<number> {
     const followerIds = await this.usersClient.getFollowerIds(event.authorId);
-    const authorName = await this.usersClient.getDisplayName(event.authorId);
+    const author = await this.usersClient.getAuthorInfo(event.authorId);
 
     const item: FeedItemDto = {
       postId: event.postId,
       authorId: event.authorId,
-      authorName,
+      authorName: author?.name,
+      authorUsername: author?.username,
       type: event.type,
       title: event.title,
       excerpt: event.excerpt,
