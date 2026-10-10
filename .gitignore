@@ -3,3 +3,6 @@
 logs/
 start-all.out
 backend/node_modules/
+
+# Stack de produccion: secretos locales
+deploy/.env

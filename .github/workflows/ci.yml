@@ -92,6 +92,56 @@ jobs:
         if: failure()
         run: tail -n 80 logs/*.log
 
+  # Las imágenes de producción (deploy/) se construyen en cada push, sin
+  # publicarlas, para detectar un Dockerfile roto antes de desplegar.
+  docker:
+    name: docker ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [auth-service, user-follow-service, post-service, chat-service, feed-service, frontend]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Servicio del backend
+        if: matrix.target != 'frontend'
+        uses: docker/build-push-action@v6
+        with:
+          context: backend
+          file: backend/Dockerfile
+          build-args: SERVICE=${{ matrix.target }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.target }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.target }}
+      - name: Frontend
+        if: matrix.target == 'frontend'
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          build-args: |
+            NEXT_PUBLIC_AUTH_URL=https://api.example.com
+            NEXT_PUBLIC_USERS_URL=https://api.example.com
+            NEXT_PUBLIC_POSTS_URL=https://api.example.com
+            NEXT_PUBLIC_CHAT_URL=https://api.example.com
+            NEXT_PUBLIC_FEED_URL=https://api.example.com
+          push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  # El compose de producción debe seguir siendo válido con la plantilla de .env.
+  deploy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validar docker-compose.prod.yml
+        working-directory: deploy
+        run: |
+          cp .env.example .env
+          ./generate-secrets.sh >> .env
+          docker compose -f docker-compose.prod.yml config -q
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

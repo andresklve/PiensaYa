@@ -1,0 +1,52 @@
+# Proxy inverso y HTTPS automático (Let's Encrypt). APP_HOST y API_HOST salen
+# del .env (p. ej. piensaya.example.com y api.piensaya.example.com).
+# Caddy emite y renueva los certificados solo, y WebSocket funciona sin más.
+
+{$APP_HOST} {
+	encode zstd gzip
+	reverse_proxy frontend:3100
+}
+
+{$API_HOST} {
+	encode zstd gzip
+
+	# Cada servicio tiene prefijos de ruta distintos, así que un solo dominio
+	# de API alcanza para el frontend (todas las NEXT_PUBLIC_*_URL son iguales).
+	@auth path /auth/*
+	handle @auth {
+		reverse_proxy auth:3000
+	}
+
+	@users path /users/*
+	handle @users {
+		reverse_proxy users:3001
+	}
+
+	@posts path /posts /posts/* /hashtags /hashtags/*
+	handle @posts {
+		reverse_proxy posts:3002
+	}
+
+	@chat path /chat/* /socket.io/*
+	handle @chat {
+		reverse_proxy chat:3003
+	}
+
+	@feed path /feed /feed/*
+	handle @feed {
+		reverse_proxy feed:3004
+	}
+
+	# Fotos de perfil y portadas (solo lectura pública del bucket).
+	@media {
+		path /piensaya-media/*
+		method GET HEAD
+	}
+	handle @media {
+		reverse_proxy s3:9090
+	}
+
+	handle {
+		respond "No encontrado" 404
+	}
+}

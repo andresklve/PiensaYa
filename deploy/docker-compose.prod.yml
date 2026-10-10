@@ -1,0 +1,229 @@
+# Stack de producción de PiensaYa: Caddy (HTTPS) + 5 servicios + frontend +
+# PostgreSQL, MongoDB, Redis, RabbitMQ y almacenamiento S3.
+#
+#   cp .env.example .env && ./generate-secrets.sh >> .env   # y editar los dominios
+#   docker compose -f docker-compose.prod.yml --env-file .env up -d --build
+#
+# Solo Caddy publica puertos; todo lo demás vive en la red interna de Docker.
+# Guía completa: deploy/DEPLOY.md
+name: piensaya
+
+x-service: &service
+  restart: unless-stopped
+  depends_on: &infra
+    postgres: { condition: service_healthy }
+    mongo: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+x-node-health: &node-health
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    environment:
+      APP_HOST: ${APP_HOST:?}
+      API_HOST: ${API_HOST:?}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - frontend
+      - auth
+      - users
+      - posts
+      - chat
+      - feed
+
+  # --- Servicios -----------------------------------------------------------
+  auth:
+    <<: *service
+    build: { context: ../backend, dockerfile: Dockerfile, args: { SERVICE: auth-service } }
+    environment:
+      PORT: 3000
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: ${PUBLIC_APP_URL:?}
+      AUTH_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/piensaya_auth
+      JWT_SECRET: ${JWT_SECRET:?}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?}
+      JWT_ACCESS_EXPIRES_SECONDS: "900"
+      JWT_REFRESH_EXPIRES_SECONDS: "604800"
+      USER_SERVICE_URL: http://users:3001
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?}
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  users:
+    <<: *service
+    build: { context: ../backend, dockerfile: Dockerfile, args: { SERVICE: user-follow-service } }
+    environment:
+      PORT: 3001
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: ${PUBLIC_APP_URL:?}
+      USER_DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?}@postgres:5432/piensaya_users
+      JWT_SECRET: ${JWT_SECRET:?}
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?}
+      STORAGE_ENDPOINT: http://s3:9090
+      STORAGE_BUCKET: piensaya-media
+      STORAGE_REGION: us-east-1
+      # URL pública con la que el navegador pide las imágenes (Caddy -> s3).
+      STORAGE_PUBLIC_URL: ${PUBLIC_API_URL:?}/piensaya-media
+      RABBITMQ_URL: amqp://piensaya:${RABBITMQ_PASSWORD:?}@rabbitmq:5672
+      RABBITMQ_FEED_QUEUE: feed_events
+    depends_on:
+      <<: *infra
+      s3: { condition: service_started }
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  posts:
+    <<: *service
+    build: { context: ../backend, dockerfile: Dockerfile, args: { SERVICE: post-service } }
+    environment:
+      PORT: 3002
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: ${PUBLIC_APP_URL:?}
+      MONGO_URI: mongodb://piensaya:${MONGO_PASSWORD:?}@mongo:27017/piensaya_posts?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:?}
+      RABBITMQ_URL: amqp://piensaya:${RABBITMQ_PASSWORD:?}@rabbitmq:5672
+      RABBITMQ_FEED_QUEUE: feed_events
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  chat:
+    <<: *service
+    build: { context: ../backend, dockerfile: Dockerfile, args: { SERVICE: chat-service } }
+    environment:
+      PORT: 3003
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: ${PUBLIC_APP_URL:?}
+      MONGO_URI: mongodb://piensaya:${MONGO_PASSWORD:?}@mongo:27017/piensaya_chat?authSource=admin
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
+      JWT_SECRET: ${JWT_SECRET:?}
+      USER_SERVICE_URL: http://users:3001
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3003/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  feed:
+    <<: *service
+    build: { context: ../backend, dockerfile: Dockerfile, args: { SERVICE: feed-service } }
+    environment:
+      PORT: 3004
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: ${PUBLIC_APP_URL:?}
+      REDIS_URL: redis://:${REDIS_PASSWORD:?}@redis:6379
+      RABBITMQ_URL: amqp://piensaya:${RABBITMQ_PASSWORD:?}@rabbitmq:5672
+      RABBITMQ_FEED_QUEUE: feed_events
+      JWT_SECRET: ${JWT_SECRET:?}
+      USER_SERVICE_URL: http://users:3001
+      POST_SERVICE_URL: http://posts:3002
+      FEED_MAX_LENGTH: "500"
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3004/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  frontend:
+    restart: unless-stopped
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+      args:
+        # Las cinco apuntan al mismo dominio: Caddy reparte por prefijo de ruta.
+        NEXT_PUBLIC_AUTH_URL: ${PUBLIC_API_URL:?}
+        NEXT_PUBLIC_USERS_URL: ${PUBLIC_API_URL:?}
+        NEXT_PUBLIC_POSTS_URL: ${PUBLIC_API_URL:?}
+        NEXT_PUBLIC_CHAT_URL: ${PUBLIC_API_URL:?}
+        NEXT_PUBLIC_FEED_URL: ${PUBLIC_API_URL:?}
+
+  # --- Infraestructura -----------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ../backend/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: piensaya
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:?}
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?}", "--appendonly", "yes"]
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: piensaya
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?}
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  # Almacenamiento de imágenes. S3Mock sirve para una demo; para producción de
+  # verdad conviene un bucket S3/R2 (ver DEPLOY.md, "Imágenes").
+  s3:
+    image: adobe/s3mock:3.12.0
+    restart: unless-stopped
+    environment:
+      initialBuckets: piensaya-media
+      root: /data
+      retainFilesOnExit: "true"
+    volumes:
+      - s3-data:/data
+
+volumes:
+  caddy-data:
+  caddy-config:
+  postgres-data:
+  mongo-data:
+  redis-data:
+  rabbitmq-data:
+  s3-data:
