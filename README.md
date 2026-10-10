@@ -17,7 +17,6 @@ Es un proyecto de portafolio personal para explorar **arquitectura de microservi
 - [Cómo correrlo en local](#cómo-correrlo-en-local)
 - [Testing y CI](#testing-y-ci)
 - [Estructura del repositorio](#estructura-del-repositorio)
-- [Roadmap](#roadmap)
 
 ---
 
@@ -235,17 +234,6 @@ PiensaYa/
 ├── .github/workflows/ci.yml   # Integración continua
 └── start-all.sh               # Levanta todo el entorno local
 ```
-
----
-
-## Roadmap
-
-- [ ] Diagrama de arquitectura detallado
-- [ ] Despliegue en AWS (ECS/Fargate, RDS, DocumentDB o Atlas, ElastiCache, SQS/SNS) con Infraestructura como Código
-- [ ] API Gateway como punto de entrada único
-- [ ] Inicio de sesión con Google (OAuth)
-- [ ] Verificación de email al registrarse
-- [ ] Rate limiting por usuario (no solo por IP) y en el User & Follow Service
 
 ---
 
