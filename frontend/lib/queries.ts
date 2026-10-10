@@ -12,6 +12,7 @@ import { useAuth } from './auth-context';
 import { getSession } from './session';
 import {
   Comment,
+  Conversation,
   FollowerItem,
   ForYouItem,
   OwnPostActivity,
@@ -467,5 +468,47 @@ export function useRemoveComment(postId: string) {
       patchPost(qc, postId, (p) => ({ ...p, commentsCount: Math.max(0, p.commentsCount - 1) }));
       void qc.invalidateQueries({ queryKey: ['author-comments'] });
     },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Mensajes: contactos y solicitudes
+// ---------------------------------------------------------------------------
+export function useConversations() {
+  return useQuery<Conversation[]>({ queryKey: qk.conversations(), queryFn: api.chat.conversations });
+}
+
+// Contacto = a quien sigo, a quien le escribí o cuya solicitud acepté. El resto
+// de conversaciones son solicitudes. undefined mientras no se sabe.
+export function useInbox() {
+  const { session } = useAuth();
+  const conversations = useConversations();
+  const following = useFollowing(session?.userId);
+
+  const isContact = (c: Conversation) =>
+    c.accepted || !!following.data?.some((f) => f.userId === c.otherUserId);
+  const ready = conversations.data && following.data;
+
+  return {
+    error: conversations.error ?? following.error,
+    contacts: ready ? conversations.data!.filter(isContact) : undefined,
+    requests: ready ? conversations.data!.filter((c) => !isContact(c)) : undefined,
+  };
+}
+
+export function useAcceptConversation() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (otherUserId: string) => api.chat.accept(otherUserId),
+    onMutate: async (otherUserId) => {
+      await qc.cancelQueries({ queryKey: qk.conversations() });
+      const previous = qc.getQueryData<Conversation[]>(qk.conversations());
+      qc.setQueryData<Conversation[]>(qk.conversations(), (old) =>
+        old?.map((c) => (c.otherUserId === otherUserId ? { ...c, accepted: true } : c)),
+      );
+      return { previous };
+    },
+    onError: (_e, _id, ctx) => qc.setQueryData(qk.conversations(), ctx?.previous),
+    onSettled: () => void qc.invalidateQueries({ queryKey: qk.conversations() }),
   });
 }

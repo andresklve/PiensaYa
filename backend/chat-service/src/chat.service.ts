@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Message } from './schemas/message.schema';
+import { AcceptedContact } from './schemas/accepted-contact.schema';
 import {
   ConversationSummaryDto,
   MessageResponseDto,
@@ -19,6 +20,8 @@ export function conversationIdFor(userA: string, userB: string): string {
 export class ChatService {
   constructor(
     @InjectModel(Message.name) private readonly messageModel: Model<Message>,
+    @InjectModel(AcceptedContact.name)
+    private readonly acceptedModel: Model<AcceptedContact>,
     private readonly usersClient: UsersClient,
   ) {}
 
@@ -81,6 +84,7 @@ export class ChatService {
       _id: string;
       lastMessage: LeanMessage;
       unreadCount: number;
+      sentByMe: boolean;
     }>([
       { $match: { $or: [{ senderId: userId }, { recipientId: userId }] } },
       { $sort: { createdAt: -1 } },
@@ -102,19 +106,42 @@ export class ChatService {
               ],
             },
           },
+          sentByMe: { $max: { $eq: ['$senderId', userId] } },
         },
       },
       { $sort: { 'lastMessage.createdAt': -1 } },
     ]);
 
-    return rows.map((row) => ({
-      otherUserId:
-        row.lastMessage.senderId === userId
-          ? row.lastMessage.recipientId
-          : row.lastMessage.senderId,
+    const otherIds = rows.map((row) =>
+      row.lastMessage.senderId === userId
+        ? row.lastMessage.recipientId
+        : row.lastMessage.senderId,
+    );
+    const acceptedRows = otherIds.length
+      ? await this.acceptedModel
+          .find({ userId, otherUserId: { $in: otherIds } }, { otherUserId: 1 })
+          .lean()
+      : [];
+    const acceptedIds = new Set(acceptedRows.map((a) => a.otherUserId));
+
+    return rows.map((row, i) => ({
+      otherUserId: otherIds[i],
       lastMessage: this.toResponse(row.lastMessage),
       unreadCount: row.unreadCount,
+      accepted: row.sentByMe || acceptedIds.has(otherIds[i]),
     }));
+  }
+
+  // Acepta la solicitud de mensajes de otherUserId (idempotente).
+  async acceptConversation(userId: string, otherUserId: string): Promise<void> {
+    if (userId === otherUserId) {
+      throw new BadRequestException('No puedes aceptarte a ti mismo');
+    }
+    await this.acceptedModel.updateOne(
+      { userId, otherUserId },
+      { $setOnInsert: { userId, otherUserId } },
+      { upsert: true },
+    );
   }
 
   async markAsRead(userId: string, otherUserId: string): Promise<number> {

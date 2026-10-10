@@ -303,6 +303,12 @@ export const api = {
         `/chat/conversations/${otherUserId}/messages`,
         { method: 'POST', body: { content } },
       ),
+    accept: (otherUserId: string) =>
+      request<void>(
+        SERVICES.chat,
+        `/chat/conversations/${otherUserId}/accept`,
+        { method: 'POST' },
+      ),
     markRead: (otherUserId: string) =>
       request<{ updated: number }>(
         SERVICES.chat,

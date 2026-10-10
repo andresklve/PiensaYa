@@ -2,24 +2,115 @@ import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Model, Types } from 'mongoose';
 import { ChatService, conversationIdFor } from './chat.service';
 import { Message } from './schemas/message.schema';
+import { AcceptedContact } from './schemas/accepted-contact.schema';
 import { UsersClient } from './users.client';
 
 describe('ChatService', () => {
   let service: ChatService;
   let messageModel: Record<string, jest.Mock>;
+  let acceptedModel: Record<string, jest.Mock>;
   let usersClient: { assertUserExists: jest.Mock };
 
   beforeEach(() => {
     messageModel = {
       create: jest.fn(),
       updateMany: jest.fn(),
+      aggregate: jest.fn(),
+    };
+    acceptedModel = {
+      find: jest.fn().mockReturnValue({ lean: () => Promise.resolve([]) }),
+      updateOne: jest.fn().mockResolvedValue({}),
     };
     usersClient = { assertUserExists: jest.fn().mockResolvedValue(undefined) };
 
     service = new ChatService(
       messageModel as unknown as Model<Message>,
+      acceptedModel as unknown as Model<AcceptedContact>,
       usersClient as unknown as UsersClient,
     );
+  });
+
+  const lastMessage = (senderId: string, recipientId: string) => ({
+    _id: new Types.ObjectId(),
+    conversationId: conversationIdFor(senderId, recipientId),
+    senderId,
+    recipientId,
+    content: 'hola',
+    readAt: null,
+    createdAt: new Date(),
+  });
+
+  describe('listConversations', () => {
+    it('marca como aceptada la conversación donde ya escribí', async () => {
+      messageModel.aggregate.mockResolvedValue([
+        {
+          _id: 'a:b',
+          lastMessage: lastMessage('b', 'a'),
+          unreadCount: 1,
+          sentByMe: true,
+        },
+      ]);
+
+      const [conv] = await service.listConversations('a');
+
+      expect(conv.otherUserId).toBe('b');
+      expect(conv.accepted).toBe(true);
+    });
+
+    it('deja como solicitud a quien me escribió y no acepté', async () => {
+      messageModel.aggregate.mockResolvedValue([
+        {
+          _id: 'a:c',
+          lastMessage: lastMessage('c', 'a'),
+          unreadCount: 2,
+          sentByMe: false,
+        },
+      ]);
+
+      const [conv] = await service.listConversations('a');
+
+      expect(conv.accepted).toBe(false);
+    });
+
+    it('marca como aceptada la solicitud que acepté sin responder', async () => {
+      messageModel.aggregate.mockResolvedValue([
+        {
+          _id: 'a:c',
+          lastMessage: lastMessage('c', 'a'),
+          unreadCount: 2,
+          sentByMe: false,
+        },
+      ]);
+      acceptedModel.find.mockReturnValue({
+        lean: () => Promise.resolve([{ otherUserId: 'c' }]),
+      });
+
+      const [conv] = await service.listConversations('a');
+
+      expect(acceptedModel.find).toHaveBeenCalledWith(
+        { userId: 'a', otherUserId: { $in: ['c'] } },
+        expect.anything(),
+      );
+      expect(conv.accepted).toBe(true);
+    });
+  });
+
+  describe('acceptConversation', () => {
+    it('guarda la aceptación de forma idempotente', async () => {
+      await service.acceptConversation('a', 'c');
+
+      expect(acceptedModel.updateOne).toHaveBeenCalledWith(
+        { userId: 'a', otherUserId: 'c' },
+        expect.anything(),
+        { upsert: true },
+      );
+    });
+
+    it('rechaza aceptarse a uno mismo', async () => {
+      await expect(service.acceptConversation('a', 'a')).rejects.toThrow(
+        BadRequestException,
+      );
+    });
   });
 
   describe('conversationIdFor', () => {

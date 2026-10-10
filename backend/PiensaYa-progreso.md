@@ -1,6 +1,6 @@
 # PiensaYa — Estado del proyecto
 
-Última actualización: 10 de octubre, 2026 (Postgres en Docker + `.env.example`, reacción propia persistida en el backend, CI con GitHub Actions; configuración de la laptop Windows)
+Última actualización: 10 de octubre, 2026 (Mensajes separados en **Contactos / Solicitudes**; antes: Postgres en Docker + `.env.example`, reacción propia persistida, CI con GitHub Actions, configuración de la laptop Windows)
 
 ## Qué es
 
@@ -30,7 +30,7 @@ Proyecto personal de portafolio (sin afiliación institucional ni fines comercia
 | **Auth Service** | 3000 | Registro/login por **username** (no email), JWT (access + refresh), roles (USUARIO/ADMIN), logout, cambio de contraseña | PostgreSQL (`piensaya_auth`) |
 | **User & Follow Service** | 3001 | Perfiles (nombre, apellido, bio, avatar, username), grafo de seguidores | PostgreSQL (`piensaya_users`) |
 | **Post & Tweet Service** | 3002 | Artículos y tweets, comentarios, reacciones; publica eventos a RabbitMQ | MongoDB (`piensaya_posts`) |
-| **Chat Service** | 3003 | Mensajería 1 a 1 en tiempo real (WebSocket/Socket.IO + Redis adapter), historial, no leídos | MongoDB (`piensaya_chat`) |
+| **Chat Service** | 3003 | Mensajería 1 a 1 en tiempo real (WebSocket/Socket.IO + Redis adapter), historial, no leídos, solicitudes de mensaje (aceptar) | MongoDB (`piensaya_chat`) |
 | **Feed Service** | 3004 | Consume eventos de RabbitMQ, arma el feed de cada seguidor en Redis (fan-out on write) | Redis (sin BD propia) |
 
 ### Flujo de eventos (Post → Feed)
@@ -90,7 +90,7 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 - Historial: se probó primero un estilo editorial "Minimalist Monochrome" (serif, esquinas rectas, titulares gigantes) y se descartó por poco práctico; se rehízo desde cero
 
 **Testing**
-- Jest, con tests unitarios por servicio (81 tests en total entre los 5)
+- Jest, con tests unitarios por servicio (86 tests en total entre los 5)
 - **CI con GitHub Actions** (`.github/workflows/ci.yml`): en cada push a `main` y en cada PR corre, por servicio, `install --frozen-lockfile` → `prisma generate` (si aplica) → lint (oxlint) → build → tests; y en el frontend lint (eslint) → `tsc --noEmit` → `next build`
 
 ## Decisiones de diseño tomadas
@@ -149,10 +149,12 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 26. ✅ **Setup reproducible**: Postgres 16 dentro de `docker-compose` (puerto **5433** en el host para no chocar con un Postgres local; crea `piensaya_auth` y `piensaya_users` solo, vía `backend/docker/postgres/init.sql`) y un `.env.example` por servicio + `frontend/.env.example`, con valores de desarrollo que ya funcionan juntos. `start-all.sh` copia los `.env` que falten, espera el healthcheck de Postgres (`up --wait`) y corre `prisma migrate deploy` en auth y user-follow
 27. ✅ **Reacción propia persistida**: el Post Service ya guardaba una reacción por usuario en Mongo, pero solo devolvía conteos. Ahora `GET /posts`, `/posts/:id`, `/posts/batch` y `/posts/search` aceptan token opcional (`OptionalJwtAuthGuard`: sin token = anónimo, token inválido = 401 para que el cliente lo renueve) y cada publicación trae `myReaction`. El Feed Service reenvía el header `Authorization` al hidratar "Para ti". El frontend lee `post.myReaction` y se borró `lib/my-reactions.ts` (localStorage)
 28. ✅ **CI con GitHub Actions**: 5 servicios en matriz + frontend (ver "Testing")
+29. ✅ **PR #9 mergeado a `main`** (puntos 26–28, CI en verde) y rama borrada
+30. ✅ **Mensajes: Contactos / Solicitudes** (como en otras redes), directo en `main`. Contacto = alguien a quien sigues, a quien le escribiste o cuya solicitud aceptaste; el resto de conversaciones van a **Solicitudes**. Chat Service: `GET /chat/conversations` trae `accepted` (le escribí o acepté) y `POST /chat/conversations/:otherUserId/accept` (idempotente, colección `accepted_contacts`); responder también acepta. El "seguir" lo combina el frontend con la lista de seguidos (`useInbox` en `lib/queries.ts`), así el Chat Service no depende del User Service. En la solicitud se puede **Aceptar** y/o **Seguir**, desde la lista o dentro de la conversación (aviso arriba del cuadro de texto). Mientras es solicitud no se marca como leída: quien escribió no ve "Visto" hasta que aceptas
 
 ## Flujo de trabajo con git
 
-- Todo el código vive en `main`. Para cada cambio: rama nueva desde `main` (`feature/<tema>`), PR y merge; después se borra la rama
+- Todo el código vive en `main`. Para cada cambio: rama nueva desde `main` (`feature/<tema>`), PR y merge; después se borra la rama. Cambios chicos pueden ir directo a `main` cuando se pide (el CI corre igual en cada push)
 - El repo tiene configurado `user.email = droupandres@gmail.com` para que los commits se vinculen a la cuenta de GitHub (la config global de la Mac no tiene correo)
 - Los commits y PRs **no** llevan líneas de coautoría ni "Generated with" de herramientas de IA
 - `gh` (GitHub CLI) está instalado y autenticado como `andresklve`, así que los PRs se pueden abrir desde la terminal (`gh pr create`)

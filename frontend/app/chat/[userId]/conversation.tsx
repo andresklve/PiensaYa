@@ -4,14 +4,17 @@ import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } f
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { SendHorizontal } from 'lucide-react';
 import { api } from '@/lib/api';
 import { Message, Profile } from '@/lib/types';
 import { Session } from '@/lib/session';
 import { useChatSocket } from '@/lib/use-chat-socket';
+import { qk, useAcceptConversation, useInbox } from '@/lib/queries';
 import { Protected } from '@/components/protected';
 import { ConnectionDot } from '@/components/connection-dot';
-import { Avatar, ErrorText, PageHeader, Spinner, cx } from '@/components/ui';
+import { FollowButton } from '@/components/follow-button';
+import { Avatar, Button, ErrorText, PageHeader, Spinner, cx } from '@/components/ui';
 
 export default function ConversationView() {
   return <Protected>{(session) => <Conversation session={session} />}</Protected>;
@@ -56,6 +59,15 @@ function Conversation({ session }: { session: Session }) {
   );
 
   const { connected, sendMessage } = useChatSocket(onIncoming);
+  const qc = useQueryClient();
+  const accept = useAcceptConversation();
+
+  // Es solicitud si me escribió alguien que no sigo y aún no acepté ni le
+  // respondí. undefined mientras carga.
+  const { requests } = useInbox();
+  const isRequest = requests
+    ? requests.some((c) => c.otherUserId === otherUserId)
+    : undefined;
 
   useEffect(() => {
     (async () => {
@@ -66,12 +78,20 @@ function Conversation({ session }: { session: Session }) {
         ]);
         setMessages(history);
         setOther(profile);
-        await api.chat.markRead(otherUserId);
       } catch (e) {
         setError(e);
       }
     })();
   }, [otherUserId]);
+
+  // Como en otras redes: quien te escribe no ve el «Visto» hasta que aceptas.
+  useEffect(() => {
+    if (isRequest !== false) return;
+    api.chat
+      .markRead(otherUserId)
+      .then(() => qc.invalidateQueries({ queryKey: qk.conversations() }))
+      .catch(() => undefined);
+  }, [isRequest, otherUserId, qc]);
 
   useLayoutEffect(() => {
     const el = scroller.current;
@@ -93,6 +113,8 @@ function Conversation({ session }: { session: Session }) {
       }
       setDraft('');
       input.current?.focus();
+      // Responder también acepta la solicitud.
+      void qc.invalidateQueries({ queryKey: qk.conversations() });
     } catch (e) {
       setError(e);
     } finally {
@@ -185,6 +207,26 @@ function Conversation({ session }: { session: Session }) {
           </AnimatePresence>
         </ul>
       </div>
+
+      {isRequest && (
+        <div className="border-t border-border bg-surface px-4 py-3">
+          <p className="text-[15px]">
+            <span className="font-bold">{other ? `@${other.username}` : name}</span> te envió una
+            solicitud de mensaje. No sabrá que la viste hasta que aceptes.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <Button
+              variant="accent"
+              size="sm"
+              disabled={accept.isPending}
+              onClick={() => accept.mutate(otherUserId)}
+            >
+              Aceptar
+            </Button>
+            <FollowButton userId={otherUserId} />
+          </div>
+        </div>
+      )}
 
       <div className="border-t border-border bg-bg px-3 py-2">
         <ErrorText error={error} />

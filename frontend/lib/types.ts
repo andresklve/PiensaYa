@@ -144,4 +144,6 @@ export interface Conversation {
   otherUserId: string;
   lastMessage: Message;
   unreadCount: number;
+  // true si le escribí o acepté su solicitud (lo calcula el Chat Service).
+  accepted: boolean;
 }

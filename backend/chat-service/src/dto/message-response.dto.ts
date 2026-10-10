@@ -32,4 +32,10 @@ export class ConversationSummaryDto {
 
   @ApiProperty()
   unreadCount: number;
+
+  @ApiProperty({
+    description:
+      'true si le escribí o acepté su solicitud. El frontend además trata como contacto a quien sigo; el resto va a "Solicitudes".',
+  })
+  accepted: boolean;
 }

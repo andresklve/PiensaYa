@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Param,
   Patch,
   Post,
@@ -80,6 +81,20 @@ export class ChatController {
     );
     this.chatGateway.notifyNewMessage(message);
     return message;
+  }
+
+  @Post(':otherUserId/accept')
+  @HttpCode(204)
+  @ApiOperation({
+    summary:
+      'Aceptar la solicitud de mensajes de ese usuario (pasa de "Solicitudes" a "Contactos")',
+  })
+  @ApiResponse({ status: 204 })
+  acceptConversation(
+    @CurrentUser() user: AuthUser,
+    @Param('otherUserId') otherUserId: string,
+  ): Promise<void> {
+    return this.chatService.acceptConversation(user.userId, otherUserId);
   }
 
   @Patch(':otherUserId/read')

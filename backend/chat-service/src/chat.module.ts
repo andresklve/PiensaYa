@@ -5,6 +5,10 @@ import { HttpModule } from '@nestjs/axios';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { Message, MessageSchema } from './schemas/message.schema';
+import {
+  AcceptedContact,
+  AcceptedContactSchema,
+} from './schemas/accepted-contact.schema';
 import { ChatController } from './chat.controller';
 import { ChatService } from './chat.service';
 import { ChatGateway } from './chat.gateway';
@@ -22,7 +26,10 @@ import { JwtStrategy } from './strategies/jwt.strategy';
         secret: config.get<string>('JWT_SECRET'),
       }),
     }),
-    MongooseModule.forFeature([{ name: Message.name, schema: MessageSchema }]),
+    MongooseModule.forFeature([
+      { name: Message.name, schema: MessageSchema },
+      { name: AcceptedContact.name, schema: AcceptedContactSchema },
+    ]),
   ],
   controllers: [ChatController],
   providers: [ChatService, ChatGateway, UsersClient, JwtStrategy],
