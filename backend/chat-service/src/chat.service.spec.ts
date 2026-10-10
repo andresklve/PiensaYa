@@ -1,6 +1,14 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import { Model, Types } from 'mongoose';
-import { ChatService, conversationIdFor } from './chat.service';
+import {
+  ChatService,
+  conversationIdFor,
+  REQUEST_MESSAGE_LIMIT,
+} from './chat.service';
 import { Message } from './schemas/message.schema';
 import { AcceptedContact } from './schemas/accepted-contact.schema';
 import { UsersClient } from './users.client';
@@ -9,19 +17,25 @@ describe('ChatService', () => {
   let service: ChatService;
   let messageModel: Record<string, jest.Mock>;
   let acceptedModel: Record<string, jest.Mock>;
-  let usersClient: { assertUserExists: jest.Mock };
+  let usersClient: { assertUserExists: jest.Mock; isFollowing: jest.Mock };
 
   beforeEach(() => {
     messageModel = {
       create: jest.fn(),
       updateMany: jest.fn(),
       aggregate: jest.fn(),
+      countDocuments: jest.fn().mockResolvedValue(0),
+      exists: jest.fn().mockResolvedValue(null),
     };
     acceptedModel = {
       find: jest.fn().mockReturnValue({ lean: () => Promise.resolve([]) }),
       updateOne: jest.fn().mockResolvedValue({}),
+      exists: jest.fn().mockResolvedValue(null),
     };
-    usersClient = { assertUserExists: jest.fn().mockResolvedValue(undefined) };
+    usersClient = {
+      assertUserExists: jest.fn().mockResolvedValue(undefined),
+      isFollowing: jest.fn().mockResolvedValue(false),
+    };
 
     service = new ChatService(
       messageModel as unknown as Model<Message>,
@@ -164,6 +178,72 @@ describe('ChatService', () => {
         content: 'hola',
       });
       expect(result.id).toBe(doc._id.toString());
+    });
+    describe('límite de solicitudes', () => {
+      const doc = {
+        _id: new Types.ObjectId(),
+        conversationId: 'a:b',
+        senderId: 'b',
+        recipientId: 'a',
+        content: 'hola',
+        readAt: null,
+        createdAt: new Date(),
+      };
+      beforeEach(() => {
+        messageModel.create.mockResolvedValue({ toObject: () => doc });
+      });
+
+      it('deja enviar mientras no se llegue al tope sin consultar nada más', async () => {
+        messageModel.countDocuments.mockResolvedValue(
+          REQUEST_MESSAGE_LIMIT - 1,
+        );
+
+        await service.sendMessage('b', 'a', 'hola');
+
+        expect(messageModel.exists).not.toHaveBeenCalled();
+        expect(usersClient.isFollowing).not.toHaveBeenCalled();
+      });
+
+      it('bloquea al llegar al tope si el destinatario no aceptó', async () => {
+        messageModel.countDocuments.mockResolvedValue(REQUEST_MESSAGE_LIMIT);
+
+        await expect(service.sendMessage('b', 'a', 'hola')).rejects.toThrow(
+          ForbiddenException,
+        );
+        expect(usersClient.isFollowing).toHaveBeenCalledWith('a', 'b');
+        expect(messageModel.create).not.toHaveBeenCalled();
+      });
+
+      it('no limita si el destinatario ya respondió', async () => {
+        messageModel.countDocuments.mockResolvedValue(10);
+        messageModel.exists.mockResolvedValue({ _id: 'x' });
+
+        await service.sendMessage('b', 'a', 'hola');
+
+        expect(messageModel.create).toHaveBeenCalled();
+      });
+
+      it('no limita si el destinatario aceptó la solicitud', async () => {
+        messageModel.countDocuments.mockResolvedValue(10);
+        acceptedModel.exists.mockResolvedValue({ _id: 'x' });
+
+        await service.sendMessage('b', 'a', 'hola');
+
+        expect(acceptedModel.exists).toHaveBeenCalledWith({
+          userId: 'a',
+          otherUserId: 'b',
+        });
+        expect(messageModel.create).toHaveBeenCalled();
+      });
+
+      it('no limita si el destinatario sigue a quien escribe', async () => {
+        messageModel.countDocuments.mockResolvedValue(10);
+        usersClient.isFollowing.mockResolvedValue(true);
+
+        await service.sendMessage('b', 'a', 'hola');
+
+        expect(messageModel.create).toHaveBeenCalled();
+      });
     });
   });
 

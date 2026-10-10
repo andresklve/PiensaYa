@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+} from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { Message } from './schemas/message.schema';
@@ -11,6 +15,9 @@ import { MESSAGE_MAX_LENGTH } from './dto/send-message.dto';
 import { UsersClient } from './users.client';
 
 type LeanMessage = Message & { _id: Types.ObjectId };
+
+// Mensajes que puede enviar alguien cuya solicitud aún no fue aceptada.
+export const REQUEST_MESSAGE_LIMIT = 3;
 
 export function conversationIdFor(userA: string, userB: string): string {
   return [userA, userB].sort().join(':');
@@ -49,14 +56,43 @@ export class ChatService {
 
     await this.usersClient.assertUserExists(recipientId);
 
+    const conversationId = conversationIdFor(senderId, recipientId);
+    await this.assertWithinRequestLimit(conversationId, senderId, recipientId);
+
     const message = await this.messageModel.create({
-      conversationId: conversationIdFor(senderId, recipientId),
+      conversationId,
       senderId,
       recipientId,
       content: text,
     });
 
     return this.toResponse(message.toObject() as LeanMessage);
+  }
+
+  // Mientras el destinatario no te acepte (responder, "Aceptar" o seguirte),
+  // solo puedes enviarle REQUEST_MESSAGE_LIMIT mensajes. Se consulta primero lo
+  // barato (conteo) y solo al llegar al tope se verifica si ya te aceptó.
+  private async assertWithinRequestLimit(
+    conversationId: string,
+    senderId: string,
+    recipientId: string,
+  ): Promise<void> {
+    const sent = await this.messageModel.countDocuments({
+      conversationId,
+      senderId,
+    });
+    if (sent < REQUEST_MESSAGE_LIMIT) return;
+
+    const [replied, accepted] = await Promise.all([
+      this.messageModel.exists({ conversationId, senderId: recipientId }),
+      this.acceptedModel.exists({ userId: recipientId, otherUserId: senderId }),
+    ]);
+    if (replied || accepted) return;
+    if (await this.usersClient.isFollowing(recipientId, senderId)) return;
+
+    throw new ForbiddenException(
+      `Tu solicitud aún no fue aceptada. Podrás enviar más de ${REQUEST_MESSAGE_LIMIT} mensajes cuando te responda o la acepte`,
+    );
   }
 
   async getHistory(

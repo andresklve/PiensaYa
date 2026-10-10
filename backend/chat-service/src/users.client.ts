@@ -33,4 +33,22 @@ export class UsersClient {
       );
     }
   }
+
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const baseUrl = this.config.get<string>('USER_SERVICE_URL');
+
+    try {
+      const { data } = await firstValueFrom(
+        this.http.get<{ following: boolean }>(
+          `${baseUrl}/users/${encodeURIComponent(followerId)}/following/${encodeURIComponent(followingId)}`,
+          { timeout: 3000 },
+        ),
+      );
+      return data.following;
+    } catch {
+      throw new ServiceUnavailableException(
+        'No se pudo verificar la relación (User Service no disponible)',
+      );
+    }
+  }
 }

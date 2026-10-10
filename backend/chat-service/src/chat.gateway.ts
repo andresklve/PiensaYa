@@ -20,9 +20,14 @@ interface SendMessagePayload {
 
 const userRoom = (userId: string) => `user:${userId}`;
 
+// El ThrottlerGuard solo cubre HTTP: por socket se limita aquí, por usuario,
+// con el mismo tope que POST /messages (ventana deslizante de 1 minuto).
+const SOCKET_MESSAGES_PER_MINUTE = 30;
+
 @WebSocketGateway({ namespace: '/chat', cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection {
   private readonly logger = new Logger(ChatGateway.name);
+  private readonly recentSends = new Map<string, number[]>();
 
   @WebSocketServer()
   server: Server;
@@ -49,6 +54,12 @@ export class ChatGateway implements OnGatewayConnection {
     @ConnectedSocket() client: Socket,
     @MessageBody() payload: SendMessagePayload,
   ) {
+    if (this.isRateLimited(client.data.userId)) {
+      return {
+        status: 'error',
+        message: 'Estás enviando mensajes muy rápido. Espera un momento.',
+      };
+    }
     try {
       const message = await this.chatService.sendMessage(
         client.data.userId,
@@ -59,7 +70,9 @@ export class ChatGateway implements OnGatewayConnection {
       return { status: 'ok', message };
     } catch (error) {
       const message =
-        error instanceof HttpException ? error.message : 'Error al enviar el mensaje';
+        error instanceof HttpException
+          ? error.message
+          : 'Error al enviar el mensaje';
       if (!(error instanceof HttpException)) this.logger.error(error);
       return { status: 'error', message };
     }
@@ -70,6 +83,17 @@ export class ChatGateway implements OnGatewayConnection {
       .to(userRoom(message.recipientId))
       .to(userRoom(message.senderId))
       .emit('new_message', message);
+  }
+
+  isRateLimited(userId: string, now = Date.now()): boolean {
+    if (process.env.THROTTLE_DISABLED === 'true') return false;
+    const recent = (this.recentSends.get(userId) ?? []).filter(
+      (t) => now - t < 60_000,
+    );
+    const limited = recent.length >= SOCKET_MESSAGES_PER_MINUTE;
+    if (!limited) recent.push(now);
+    this.recentSends.set(userId, recent);
+    return limited;
   }
 
   private extractToken(client: Socket): string {
