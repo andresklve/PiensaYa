@@ -2,7 +2,8 @@
 
 import { usePathname } from 'next/navigation';
 import { MotionConfig } from 'framer-motion';
-import { BottomNav, IndexNav, TopBar } from './nav';
+import { useAuth } from '@/lib/auth-context';
+import { BottomNav, InboxListener, IndexNav, TopBar } from './nav';
 import { RightPanel } from './right-panel';
 import { cx } from './ui';
 
@@ -14,6 +15,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const bare = BARE_ROUTES.includes(pathname);
   const inConversation = pathname.startsWith('/chat/');
+  const { session } = useAuth();
 
   return (
     <MotionConfig reducedMotion="user">
@@ -23,6 +25,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </main>
       ) : (
         <>
+          {/* key: un socket por sesión; al cambiar de cuenta se reconecta con el token nuevo. */}
+          {session && !pathname.startsWith('/chat') && <InboxListener key={session.userId} />}
           <TopBar />
           <div className="mx-auto flex max-w-[1280px] justify-center gap-8 lg:px-5">
             <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-[220px] shrink-0 lg:block">

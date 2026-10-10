@@ -71,7 +71,8 @@ function ChatList({ session }: { session: Session }) {
         </p>
       )}
 
-      <ul className="py-1">
+      {/* key: cada pestaña es una lista nueva, sin animar la salida de la anterior. */}
+      <ul key={box} className="py-1">
         <AnimatePresence initial={false}>
           {items?.map((c) => (
             <motion.li

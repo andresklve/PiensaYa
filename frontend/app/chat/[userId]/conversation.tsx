@@ -20,6 +20,8 @@ export default function ConversationView() {
   return <Protected>{(session) => <Conversation session={session} />}</Protected>;
 }
 
+const HISTORY_PAGE = 30;
+
 const dayKey = (iso: string) => new Date(iso).toDateString();
 
 function dayLabel(iso: string): string {
@@ -44,21 +46,13 @@ function Conversation({ session }: { session: Session }) {
   const [draft, setDraft] = useState('');
   const [error, setError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
   const input = useRef<HTMLTextAreaElement>(null);
+  // Alto del scroll antes de anteponer mensajes viejos, para no saltar al fondo.
+  const prependFrom = useRef<number | null>(null);
 
-  const onIncoming = useCallback(
-    (message: Message) => {
-      const pair = [session.userId, otherUserId];
-      if (!pair.includes(message.senderId) || !pair.includes(message.recipientId)) return;
-      setMessages((prev) =>
-        (prev ?? []).some((m) => m.id === message.id) ? prev : [...(prev ?? []), message],
-      );
-    },
-    [session.userId, otherUserId],
-  );
-
-  const { connected, sendMessage } = useChatSocket(onIncoming);
   const qc = useQueryClient();
   const accept = useAcceptConversation();
 
@@ -69,14 +63,42 @@ function Conversation({ session }: { session: Session }) {
     ? requests.some((c) => c.otherUserId === otherUserId)
     : undefined;
 
+  // Como en otras redes: quien te escribe no ve el «Visto» hasta que aceptas.
+  const markRead = useCallback(() => {
+    api.chat
+      .markRead(otherUserId)
+      .then(() => qc.invalidateQueries({ queryKey: qk.conversations() }))
+      .catch(() => undefined);
+  }, [otherUserId, qc]);
+  const canMarkRead = useRef(false);
+  useEffect(() => {
+    canMarkRead.current = isRequest === false;
+  }, [isRequest]);
+
+  const onIncoming = useCallback(
+    (message: Message) => {
+      const pair = [session.userId, otherUserId];
+      if (!pair.includes(message.senderId) || !pair.includes(message.recipientId)) return;
+      setMessages((prev) =>
+        (prev ?? []).some((m) => m.id === message.id) ? prev : [...(prev ?? []), message],
+      );
+      // Llegó con el chat abierto: ya lo estás viendo.
+      if (message.senderId === otherUserId && canMarkRead.current) markRead();
+    },
+    [session.userId, otherUserId, markRead],
+  );
+
+  const { connected, sendMessage } = useChatSocket(onIncoming);
+
   useEffect(() => {
     (async () => {
       try {
         const [history, profile] = await Promise.all([
-          api.chat.history(otherUserId),
+          api.chat.history(otherUserId, HISTORY_PAGE),
           api.users.byId(otherUserId).catch(() => null),
         ]);
         setMessages(history);
+        setHasOlder(history.length === HISTORY_PAGE);
         setOther(profile);
       } catch (e) {
         setError(e);
@@ -84,18 +106,36 @@ function Conversation({ session }: { session: Session }) {
     })();
   }, [otherUserId]);
 
-  // Como en otras redes: quien te escribe no ve el «Visto» hasta que aceptas.
   useEffect(() => {
-    if (isRequest !== false) return;
-    api.chat
-      .markRead(otherUserId)
-      .then(() => qc.invalidateQueries({ queryKey: qk.conversations() }))
-      .catch(() => undefined);
-  }, [isRequest, otherUserId, qc]);
+    if (isRequest === false) markRead();
+  }, [isRequest, markRead]);
+
+  async function loadOlder() {
+    const oldest = messages?.[0];
+    if (!oldest || loadingOlder) return;
+    setLoadingOlder(true);
+    try {
+      const older = await api.chat.history(otherUserId, HISTORY_PAGE, oldest.createdAt);
+      prependFrom.current = scroller.current?.scrollHeight ?? null;
+      setMessages((prev) => [...older, ...(prev ?? [])]);
+      setHasOlder(older.length === HISTORY_PAGE);
+    } catch (e) {
+      setError(e);
+    } finally {
+      setLoadingOlder(false);
+    }
+  }
 
   useLayoutEffect(() => {
     const el = scroller.current;
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+    if (!el) return;
+    if (prependFrom.current !== null) {
+      // Mantiene a la vista el mismo mensaje que estabas leyendo.
+      el.scrollTop += el.scrollHeight - prependFrom.current;
+      prependFrom.current = null;
+      return;
+    }
+    el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
   }, [messages]);
 
   async function send(event?: React.FormEvent) {
@@ -138,7 +178,15 @@ function Conversation({ session }: { session: Session }) {
       />
 
       <div ref={scroller} className="flex-1 overflow-y-auto px-4 pb-4">
-        {other && (
+        {hasOlder && (
+          <div className="flex justify-center pt-4">
+            <Button variant="secondary" size="sm" onClick={loadOlder} disabled={loadingOlder}>
+              {loadingOlder ? 'Cargando…' : 'Cargar mensajes anteriores'}
+            </Button>
+          </div>
+        )}
+        {/* La ficha va al inicio real de la conversación. */}
+        {other && !hasOlder && (
           <Link
             href={`/u/${other.username}`}
             className="paper-dots mt-4 flex flex-col items-center rounded-2xl px-4 py-8 text-center transition-opacity hover:opacity-90"

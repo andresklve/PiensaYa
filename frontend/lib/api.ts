@@ -6,6 +6,7 @@ import {
   Conversation,
   FeedPage,
   FollowerItem,
+  Suggestion,
   ForYouItem,
   Me,
   SearchResult,
@@ -45,6 +46,8 @@ async function parseError(res: Response): Promise<never> {
   } catch {
     /* respuesta sin body JSON */
   }
+  // Rate limiting del backend (@nestjs/throttler responde en inglés).
+  if (res.status === 429) message = 'Demasiados intentos seguidos. Espera un minuto y vuelve a intentarlo.';
   throw new ApiError(res.status, message);
 }
 
@@ -208,13 +211,18 @@ export const api = {
       }),
     search: (q: string, limit = 8) =>
       request<FollowerItem[]>(SERVICES.users, '/users/search', { auth: false, query: { q, limit } }),
-    followers: (userId: string) =>
+    suggestions: (limit = 6) =>
+      request<Suggestion[]>(SERVICES.users, '/users/me/suggestions', { query: { limit } }),
+    // Sin page devuelve la lista completa (la usa el "¿lo sigo?").
+    followers: (userId: string, page?: { limit: number; offset: number }) =>
       request<FollowerItem[]>(SERVICES.users, `/users/${userId}/followers`, {
         auth: false,
+        query: page,
       }),
-    following: (userId: string) =>
+    following: (userId: string, page?: { limit: number; offset: number }) =>
       request<FollowerItem[]>(SERVICES.users, `/users/${userId}/following`, {
         auth: false,
+        query: page,
       }),
   },
 
@@ -291,11 +299,11 @@ export const api = {
   chat: {
     conversations: () =>
       request<Conversation[]>(SERVICES.chat, '/chat/conversations'),
-    history: (otherUserId: string, limit = 50) =>
+    history: (otherUserId: string, limit = 50, before?: string) =>
       request<Message[]>(
         SERVICES.chat,
         `/chat/conversations/${otherUserId}/messages`,
-        { query: { limit } },
+        { query: { limit, before } },
       ),
     send: (otherUserId: string, content: string) =>
       request<Message>(

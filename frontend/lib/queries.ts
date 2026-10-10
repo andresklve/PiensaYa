@@ -2,6 +2,7 @@
 
 import {
   QueryClient,
+  useInfiniteQuery,
   useMutation,
   useQueries,
   useQuery,
@@ -45,6 +46,7 @@ export const qk = {
   commentsByAuthor: (authorId: string) => ['author-comments', authorId] as const,
   comments: (postId: string) => ['comments', postId] as const,
   conversations: () => ['conversations'] as const,
+  suggestions: () => ['suggestions'] as const,
 };
 
 export function makeQueryClient() {
@@ -154,11 +156,18 @@ export function useFollowing(userId: string | undefined) {
   });
 }
 
-export function useFollowers(userId: string | undefined) {
-  return useQuery({
-    queryKey: qk.followers(userId ?? ''),
-    queryFn: () => api.users.followers(userId!),
-    enabled: !!userId,
+// Lista paginada para las pestañas del perfil (20 por página). Comparte el
+// prefijo de clave con la lista completa, así seguir/dejar de seguir la invalida.
+const PEOPLE_PAGE = 20;
+export function usePeoplePages(kind: 'followers' | 'following', userId: string | undefined, enabled: boolean) {
+  return useInfiniteQuery({
+    queryKey: [kind, userId ?? '', 'paged'] as const,
+    queryFn: ({ pageParam }) =>
+      api.users[kind](userId!, { limit: PEOPLE_PAGE, offset: pageParam }),
+    initialPageParam: 0,
+    getNextPageParam: (last, pages) =>
+      last.length === PEOPLE_PAGE ? pages.length * PEOPLE_PAGE : undefined,
+    enabled: !!userId && enabled,
   });
 }
 
@@ -221,7 +230,18 @@ export function useFollowMutation() {
       void qc.invalidateQueries({ queryKey: qk.profile(userId) });
       void qc.invalidateQueries({ queryKey: ['profile-username'] });
       void qc.invalidateQueries({ queryKey: ['feed'] });
+      void qc.invalidateQueries({ queryKey: qk.suggestions() });
     },
+  });
+}
+
+// Personas sugeridas por el User & Follow Service (amigos de amigos primero).
+export function useSuggestions() {
+  const { session } = useAuth();
+  return useQuery({
+    queryKey: qk.suggestions(),
+    queryFn: () => api.users.suggestions(6),
+    enabled: !!session,
   });
 }
 
@@ -475,7 +495,18 @@ export function useRemoveComment(postId: string) {
 // Mensajes: contactos y solicitudes
 // ---------------------------------------------------------------------------
 export function useConversations() {
-  return useQuery<Conversation[]>({ queryKey: qk.conversations(), queryFn: api.chat.conversations });
+  const { session } = useAuth();
+  return useQuery<Conversation[]>({
+    queryKey: qk.conversations(),
+    queryFn: api.chat.conversations,
+    enabled: !!session,
+  });
+}
+
+// Conversaciones con mensajes sin leer (contactos y solicitudes), para el menú.
+export function useUnreadConversations(): number {
+  const { data } = useConversations();
+  return data?.filter((c) => c.unreadCount > 0).length ?? 0;
 }
 
 // Contacto = a quien sigo, a quien le escribí o cuya solicitud acepté. El resto

@@ -8,8 +8,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth-context';
 import {
   useCommentsByAuthor,
-  useFollowers,
-  useFollowing,
+  usePeoplePages,
   usePostList,
   useProfileByKey,
   useProfiles,
@@ -48,10 +47,11 @@ export function ProfileView({ profileKey }: { profileKey: string }) {
   const { session } = useAuth();
   const { data: profile, error } = useProfileByKey(profileKey);
   const { data: postsPage } = usePostList({ authorId: profile?.userId, limit: 30 }, !!profile);
-  const followers = useFollowers(profile?.userId);
-  const following = useFollowing(profile?.userId);
-  const comments = useCommentsByAuthor(profile?.userId);
   const [tab, setTab] = useState<Tab>('posts');
+  const followers = usePeoplePages('followers', profile?.userId, tab === 'followers');
+  const following = usePeoplePages('following', profile?.userId, tab === 'following');
+  const people = tab === 'followers' ? followers : following;
+  const comments = useCommentsByAuthor(profile?.userId);
   const [filter, setFilter] = useState<Filter>('ALL');
   const [editing, setEditing] = useState(false);
 
@@ -166,11 +166,25 @@ export function ProfileView({ profileKey }: { profileKey: string }) {
           )}
           {tab === 'comments' && <CommentList items={comments.data ?? null} author={profile} />}
           {(tab === 'followers' || tab === 'following') && (
-            <PeopleList
-              people={(tab === 'followers' ? followers : following).data ?? null}
-              currentUserId={session?.userId}
-              emptyTitle={tab === 'followers' ? 'Todavía sin seguidores' : 'Todavía no sigue a nadie'}
-            />
+            <>
+              <PeopleList
+                people={people.data?.pages.flat() ?? null}
+                currentUserId={session?.userId}
+                emptyTitle={tab === 'followers' ? 'Todavía sin seguidores' : 'Todavía no sigue a nadie'}
+              />
+              {people.hasNextPage && (
+                <div className="flex justify-center py-3">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => void people.fetchNextPage()}
+                    disabled={people.isFetchingNextPage}
+                  >
+                    {people.isFetchingNextPage ? 'Cargando…' : 'Ver más'}
+                  </Button>
+                </div>
+              )}
+            </>
           )}
         </motion.div>
       </AnimatePresence>

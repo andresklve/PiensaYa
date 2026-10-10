@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Compass, Home, LogOut, MessageSquare, PenLine, Search, User, type LucideIcon } from 'lucide-react';
 import { useAuth } from '@/lib/auth-context';
-import { normalizeTag, useFollowing, useProfile } from '@/lib/queries';
+import { normalizeTag, qk, useFollowing, useProfile, useUnreadConversations } from '@/lib/queries';
+import { useChatSocket } from '@/lib/use-chat-socket';
 import { Avatar, ButtonLink, TextLink, cx } from './ui';
 import { ThemeToggle } from './theme-toggle';
 
@@ -20,6 +22,33 @@ const LINKS: { href: string; label: string; icon: LucideIcon }[] = [
 function useActive() {
   const pathname = usePathname();
   return (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+}
+
+// Fuera de /chat (que ya tiene su propio socket) escucha mensajes nuevos para
+// refrescar el contador de "Mensajes" al instante.
+export function InboxListener() {
+  const qc = useQueryClient();
+  const refresh = useCallback(() => void qc.invalidateQueries({ queryKey: qk.conversations() }), [qc]);
+  useChatSocket(refresh);
+  return null;
+}
+
+function UnreadBadge({ count, className }: { count: number; className?: string }) {
+  if (count === 0) return null;
+  return (
+    <motion.span
+      initial={{ scale: 0 }}
+      animate={{ scale: 1 }}
+      transition={{ type: 'spring', stiffness: 500, damping: 25 }}
+      aria-label={`${count} ${count === 1 ? 'conversación' : 'conversaciones'} sin leer`}
+      className={cx(
+        'flex h-5 min-w-5 items-center justify-center rounded-md bg-accent px-1 text-[11px] font-bold tabular-nums text-accent-ink ring-1 ring-fg/15',
+        className,
+      )}
+    >
+      {count > 9 ? '9+' : count}
+    </motion.span>
+  );
 }
 
 // "piensa" + "Ya" subrayado con marcador.
@@ -188,6 +217,7 @@ function AccountMenu() {
 // Columna izquierda en escritorio: navegación + las personas que sigues.
 export function IndexNav() {
   const isActive = useActive();
+  const unread = useUnreadConversations();
   return (
     <div className="flex h-full flex-col gap-7 overflow-y-auto py-5 pr-2 [scrollbar-width:thin]">
       <nav aria-label="Principal" className="flex flex-col gap-0.5">
@@ -210,6 +240,7 @@ export function IndexNav() {
               <span className="absolute inset-0 rounded-xl transition-colors group-hover:bg-surface" />
               <Icon size={20} strokeWidth={active ? 2.4 : 1.8} className="relative" aria-hidden />
               <span className={cx('relative', active ? 'mark' : 'mark-swipe-hover')}>{label}</span>
+              {href === '/chat' && <UnreadBadge count={unread} className="relative ml-auto" />}
             </Link>
           );
         })}
@@ -282,6 +313,7 @@ function FollowingIndex() {
 export function BottomNav() {
   const { session } = useAuth();
   const isActive = useActive();
+  const unread = useUnreadConversations();
 
   if (!session) return null;
 
@@ -314,6 +346,7 @@ export function BottomNav() {
                 className={cx('relative', active ? 'text-accent-ink' : 'text-fg')}
                 aria-hidden
               />
+              {href === '/chat' && <UnreadBadge count={unread} className="absolute -right-1 -top-1" />}
             </span>
           </Link>
         );

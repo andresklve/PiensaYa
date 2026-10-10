@@ -25,6 +25,8 @@ export interface Profile {
   followingCount: number;
 }
 
+export type Suggestion = FollowerItem & { mutualCount: number };
+
 export interface FollowerItem {
   userId: string;
   username: string;
