@@ -8,10 +8,16 @@ import {
   Param,
   Patch,
   Post,
+  Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import {
   ApiBearerAuth,
+  ApiBody,
+  ApiConsumes,
   ApiOperation,
   ApiResponse,
   ApiTags,
@@ -25,6 +31,22 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { InternalServiceGuard } from './guards/internal-service.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthUser } from './strategies/jwt.strategy';
+import { MAX_IMAGE_BYTES } from './storage/profile-images';
+import type { UploadedImage } from './storage/profile-images';
+
+// Multer guarda el archivo en memoria con un tope de tamaño; el tipo real se
+// valida después con sharp (ver storage/profile-images.ts).
+const imageUpload = FileInterceptor('file', {
+  limits: { fileSize: MAX_IMAGE_BYTES, files: 1 },
+});
+
+const IMAGE_BODY = {
+  schema: {
+    type: 'object',
+    properties: { file: { type: 'string', format: 'binary' } },
+    required: ['file'],
+  },
+};
 
 @ApiTags('users')
 @Controller('users')
@@ -65,6 +87,65 @@ export class UsersController {
     @Body() dto: UpdateProfileDto,
   ): Promise<UserProfileResponseDto> {
     return this.usersService.updateProfile(user.userId, dto);
+  }
+
+  @Post('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(imageUpload)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(IMAGE_BODY)
+  @ApiOperation({ summary: 'Subir foto de perfil (JPG, PNG o WebP, máx. 5 MB)' })
+  @ApiResponse({ status: 201, type: UserProfileResponseDto })
+  @ApiResponse({ status: 400, description: 'Archivo ausente, vacío o con formato no soportado' })
+  @ApiResponse({ status: 413, description: 'La imagen supera los 5 MB' })
+  uploadAvatar(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: UploadedImage | undefined,
+  ): Promise<UserProfileResponseDto> {
+    return this.usersService.setProfileImage(user.userId, 'avatar', file);
+  }
+
+  @Delete('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Quitar la foto de perfil' })
+  @ApiResponse({ status: 200, type: UserProfileResponseDto })
+  removeAvatar(@CurrentUser() user: AuthUser): Promise<UserProfileResponseDto> {
+    return this.usersService.removeProfileImage(user.userId, 'avatar');
+  }
+
+  @Post('me/cover')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(imageUpload)
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody(IMAGE_BODY)
+  @ApiOperation({ summary: 'Subir foto de portada (JPG, PNG o WebP, máx. 5 MB)' })
+  @ApiResponse({ status: 201, type: UserProfileResponseDto })
+  @ApiResponse({ status: 400, description: 'Archivo ausente, vacío o con formato no soportado' })
+  @ApiResponse({ status: 413, description: 'La imagen supera los 5 MB' })
+  uploadCover(
+    @CurrentUser() user: AuthUser,
+    @UploadedFile() file: UploadedImage | undefined,
+  ): Promise<UserProfileResponseDto> {
+    return this.usersService.setProfileImage(user.userId, 'cover', file);
+  }
+
+  @Delete('me/cover')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Quitar la foto de portada' })
+  @ApiResponse({ status: 200, type: UserProfileResponseDto })
+  removeCover(@CurrentUser() user: AuthUser): Promise<UserProfileResponseDto> {
+    return this.usersService.removeProfileImage(user.userId, 'cover');
+  }
+
+  @Get('search')
+  @ApiOperation({ summary: 'Buscar personas por nombre, apellido o @username' })
+  @ApiResponse({ status: 200, type: [FollowerItemDto] })
+  search(@Query('q') q = '', @Query('limit') limit?: string): Promise<FollowerItemDto[]> {
+    return this.usersService.search(q, limit ? Number(limit) || 10 : 10);
   }
 
   @Get('by-username/:username')

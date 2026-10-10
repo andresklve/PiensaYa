@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, IsUrl, MaxLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateProfileDto {
   @ApiPropertyOptional()
@@ -18,8 +18,6 @@ export class UpdateProfileDto {
   @MaxLength(280, { message: 'La bio no puede superar los 280 caracteres' })
   bio?: string;
 
-  @ApiPropertyOptional()
-  @IsOptional()
-  @IsUrl({}, { message: 'avatarUrl debe ser una URL válida' })
-  avatarUrl?: string;
+  // La foto de perfil y la portada no se editan aquí: se suben como archivo
+  // en POST /users/me/avatar y POST /users/me/cover.
 }
