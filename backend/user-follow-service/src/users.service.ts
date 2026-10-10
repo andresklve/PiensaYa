@@ -10,6 +10,10 @@ import { CreateUserProfileDto } from './dto/create-user-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { FollowerItemDto } from './dto/follower-item.dto';
+import {
+  FollowPageQueryDto,
+  SuggestionDto,
+} from './dto/follow-page-query.dto';
 import { StorageService } from './storage/storage.service';
 import { FollowEventsPublisher } from './events/follow-events.publisher';
 import {
@@ -191,26 +195,120 @@ export class UsersService {
     return profiles.map((p) => this.toFollowerItem(p));
   }
 
-  async getFollowers(userId: string): Promise<FollowerItemDto[]> {
+  async getFollowers(
+    userId: string,
+    page: FollowPageQueryDto = {},
+  ): Promise<FollowerItemDto[]> {
     await this.findProfileOrThrow(userId);
 
     const follows = await this.prisma.follow.findMany({
       where: { followingId: userId },
       include: { follower: true },
+      ...this.pageArgs(page),
     });
 
     return follows.map((f) => this.toFollowerItem(f.follower));
   }
 
-  async getFollowing(userId: string): Promise<FollowerItemDto[]> {
+  async getFollowing(
+    userId: string,
+    page: FollowPageQueryDto = {},
+  ): Promise<FollowerItemDto[]> {
     await this.findProfileOrThrow(userId);
 
     const follows = await this.prisma.follow.findMany({
       where: { followerId: userId },
       include: { following: true },
+      ...this.pageArgs(page),
     });
 
     return follows.map((f) => this.toFollowerItem(f.following));
+  }
+
+  async isFollowing(followerId: string, followingId: string): Promise<boolean> {
+    const follow = await this.prisma.follow.findUnique({
+      where: { followerId_followingId: { followerId, followingId } },
+    });
+    return !!follow;
+  }
+
+  // Sugerencias en tres niveles, sin repetir ni incluir a quien ya sigo:
+  // 1) "amigos de amigos" ordenados por cuántos de mis seguidos los siguen,
+  // 2) los más seguidos de la plataforma, 3) los perfiles más nuevos.
+  async getSuggestions(userId: string, limit = 5): Promise<SuggestionDto[]> {
+    const mine = await this.prisma.follow.findMany({
+      where: { followerId: userId },
+      select: { followingId: true },
+    });
+    const followingIds = mine.map((f) => f.followingId);
+    const exclude = new Set([userId, ...followingIds]);
+    const picked = new Map<string, number>();
+    const pick = (id: string, mutual: number) => {
+      if (picked.size < limit && !exclude.has(id) && !picked.has(id)) {
+        picked.set(id, mutual);
+      }
+    };
+
+    if (followingIds.length > 0) {
+      const secondHop = await this.prisma.follow.groupBy({
+        by: ['followingId'],
+        where: {
+          followerId: { in: followingIds },
+          followingId: { notIn: [...exclude] },
+        },
+        _count: { followingId: true },
+        orderBy: { _count: { followingId: 'desc' } },
+        take: limit,
+      });
+      secondHop.forEach((row) => pick(row.followingId, row._count.followingId));
+    }
+
+    if (picked.size < limit) {
+      const popular = await this.prisma.follow.groupBy({
+        by: ['followingId'],
+        where: { followingId: { notIn: [...exclude, ...picked.keys()] } },
+        _count: { followingId: true },
+        orderBy: { _count: { followingId: 'desc' } },
+        take: limit,
+      });
+      popular.forEach((row) => pick(row.followingId, 0));
+    }
+
+    if (picked.size < limit) {
+      const newest = await this.prisma.userProfile.findMany({
+        where: { userId: { notIn: [...exclude, ...picked.keys()] } },
+        orderBy: { createdAt: 'desc' },
+        select: { userId: true },
+        take: limit,
+      });
+      newest.forEach((p) => pick(p.userId, 0));
+    }
+
+    if (picked.size === 0) return [];
+    const profiles = await this.prisma.userProfile.findMany({
+      where: { userId: { in: [...picked.keys()] } },
+    });
+    const byId = new Map(profiles.map((p) => [p.userId, p]));
+
+    return [...picked]
+      .filter(([id]) => byId.has(id))
+      .map(([id, mutualCount]) => ({
+        ...this.toFollowerItem(byId.get(id)!),
+        mutualCount,
+      }));
+  }
+
+  private pageArgs(page: FollowPageQueryDto): {
+    orderBy: { createdAt: 'desc' };
+    take?: number;
+    skip?: number;
+  } {
+    if (!page.limit) return { orderBy: { createdAt: 'desc' } };
+    return {
+      orderBy: { createdAt: 'desc' },
+      take: page.limit,
+      skip: page.offset ?? 0,
+    };
   }
 
   private async findProfileOrThrow(userId: string) {

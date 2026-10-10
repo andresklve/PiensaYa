@@ -17,6 +17,7 @@ describe('UsersService', () => {
       findFirst: jest.Mock;
       create: jest.Mock;
       update: jest.Mock;
+      findMany: jest.Mock;
     };
     follow: {
       findUnique: jest.Mock;
@@ -24,6 +25,7 @@ describe('UsersService', () => {
       delete: jest.Mock;
       count: jest.Mock;
       findMany: jest.Mock;
+      groupBy: jest.Mock;
     };
   };
   let storage: { put: jest.Mock; deleteByUrl: jest.Mock };
@@ -36,6 +38,7 @@ describe('UsersService', () => {
         findFirst: jest.fn(),
         create: jest.fn(),
         update: jest.fn(),
+        findMany: jest.fn(),
       },
       follow: {
         findUnique: jest.fn(),
@@ -43,6 +46,7 @@ describe('UsersService', () => {
         delete: jest.fn(),
         count: jest.fn(),
         findMany: jest.fn(),
+        groupBy: jest.fn(),
       },
     };
 
@@ -166,6 +170,91 @@ describe('UsersService', () => {
 
     it('una búsqueda vacía no consulta la base', async () => {
       await expect(usersService.search('   ')).resolves.toEqual([]);
+    });
+  });
+
+  describe('getFollowers / getFollowing', () => {
+    it('sin limit devuelve la lista completa, más recientes primero', async () => {
+      prisma.userProfile.findUnique.mockResolvedValue({ userId: '1' });
+      prisma.follow.findMany.mockResolvedValue([]);
+
+      await usersService.getFollowers('1');
+
+      const args = prisma.follow.findMany.mock.calls[0][0];
+      expect(args.orderBy).toEqual({ createdAt: 'desc' });
+      expect(args.take).toBeUndefined();
+    });
+
+    it('con limit y offset pagina', async () => {
+      prisma.userProfile.findUnique.mockResolvedValue({ userId: '1' });
+      prisma.follow.findMany.mockResolvedValue([]);
+
+      await usersService.getFollowing('1', { limit: 20, offset: 40 });
+
+      expect(prisma.follow.findMany.mock.calls[0][0]).toMatchObject({
+        take: 20,
+        skip: 40,
+      });
+    });
+  });
+
+  describe('isFollowing', () => {
+    it('true si existe la relación', async () => {
+      prisma.follow.findUnique.mockResolvedValue({ followerId: 'a' });
+      await expect(usersService.isFollowing('a', 'b')).resolves.toBe(true);
+    });
+
+    it('false si no existe', async () => {
+      prisma.follow.findUnique.mockResolvedValue(null);
+      await expect(usersService.isFollowing('a', 'b')).resolves.toBe(false);
+    });
+  });
+
+  describe('getSuggestions', () => {
+    const p = (userId: string) => ({
+      userId,
+      username: userId,
+      firstName: userId,
+      lastName: 'X',
+      avatarUrl: null,
+    });
+
+    it('prioriza amigos de amigos y completa con los más seguidos y los nuevos', async () => {
+      // a sigue a b; b sigue a c; d es popular; e es nuevo.
+      prisma.follow.findMany.mockResolvedValue([{ followingId: 'b' }]);
+      prisma.follow.groupBy
+        .mockResolvedValueOnce([{ followingId: 'c', _count: { followingId: 2 } }])
+        .mockResolvedValueOnce([{ followingId: 'd', _count: { followingId: 9 } }]);
+      prisma.userProfile.findMany
+        .mockResolvedValueOnce([{ userId: 'e' }])
+        .mockResolvedValueOnce([p('e'), p('d'), p('c')]);
+
+      const result = await usersService.getSuggestions('a', 3);
+
+      expect(result.map((s) => [s.userId, s.mutualCount])).toEqual([
+        ['c', 2],
+        ['d', 0],
+        ['e', 0],
+      ]);
+      const secondHopWhere = prisma.follow.groupBy.mock.calls[0][0].where;
+      expect(secondHopWhere.followingId.notIn).toEqual(
+        expect.arrayContaining(['a', 'b']),
+      );
+    });
+
+    it('sin seguidos salta directo a los más seguidos', async () => {
+      prisma.follow.findMany.mockResolvedValue([]);
+      prisma.follow.groupBy.mockResolvedValueOnce([
+        { followingId: 'd', _count: { followingId: 9 } },
+      ]);
+      prisma.userProfile.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([p('d')]);
+
+      const result = await usersService.getSuggestions('a', 2);
+
+      expect(prisma.follow.groupBy).toHaveBeenCalledTimes(1);
+      expect(result.map((s) => s.userId)).toEqual(['d']);
     });
   });
 

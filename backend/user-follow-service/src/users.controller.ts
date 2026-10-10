@@ -27,6 +27,12 @@ import { CreateUserProfileDto } from './dto/create-user-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { FollowerItemDto } from './dto/follower-item.dto';
+import {
+  FollowPageQueryDto,
+  IsFollowingResponseDto,
+  SuggestionDto,
+  SuggestionQueryDto,
+} from './dto/follow-page-query.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { InternalServiceGuard } from './guards/internal-service.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
@@ -141,6 +147,21 @@ export class UsersController {
     return this.usersService.removeProfileImage(user.userId, 'cover');
   }
 
+  @Get('me/suggestions')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Personas sugeridas: las que siguen quienes sigues (por coincidencias), luego las más seguidas y las más nuevas',
+  })
+  @ApiResponse({ status: 200, type: [SuggestionDto] })
+  suggestions(
+    @CurrentUser() user: AuthUser,
+    @Query() query: SuggestionQueryDto,
+  ): Promise<SuggestionDto[]> {
+    return this.usersService.getSuggestions(user.userId, query.limit);
+  }
+
   @Get('search')
   @ApiOperation({ summary: 'Buscar personas por nombre, apellido o @username' })
   @ApiResponse({ status: 200, type: [FollowerItemDto] })
@@ -196,20 +217,40 @@ export class UsersController {
   }
 
   @Get(':userId/followers')
-  @ApiOperation({ summary: 'Listar los seguidores de un usuario' })
+  @ApiOperation({
+    summary:
+      'Listar los seguidores de un usuario (más recientes primero; sin limit devuelve todos)',
+  })
   @ApiResponse({ status: 200, type: [FollowerItemDto] })
   getFollowers(
     @Param('userId') userId: string,
+    @Query() page: FollowPageQueryDto,
   ): Promise<FollowerItemDto[]> {
-    return this.usersService.getFollowers(userId);
+    return this.usersService.getFollowers(userId, page);
   }
 
   @Get(':userId/following')
-  @ApiOperation({ summary: 'Listar a quién sigue un usuario' })
+  @ApiOperation({
+    summary:
+      'Listar a quién sigue un usuario (más recientes primero; sin limit devuelve todos)',
+  })
   @ApiResponse({ status: 200, type: [FollowerItemDto] })
   getFollowing(
     @Param('userId') userId: string,
+    @Query() page: FollowPageQueryDto,
   ): Promise<FollowerItemDto[]> {
-    return this.usersService.getFollowing(userId);
+    return this.usersService.getFollowing(userId, page);
+  }
+
+  @Get(':userId/following/:targetId')
+  @ApiOperation({ summary: '¿userId sigue a targetId?' })
+  @ApiResponse({ status: 200, type: IsFollowingResponseDto })
+  async isFollowing(
+    @Param('userId') userId: string,
+    @Param('targetId') targetId: string,
+  ): Promise<IsFollowingResponseDto> {
+    return {
+      following: await this.usersService.isFollowing(userId, targetId),
+    };
   }
 }
