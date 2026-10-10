@@ -65,6 +65,8 @@ export interface Post {
   tags?: string[];
   commentsCount: number;
   reactions: Partial<Record<ReactionType, number>>;
+  // Reacción del usuario con sesión (la calcula el Post Service a partir del token).
+  myReaction?: ReactionType | null;
   createdAt: string;
   updatedAt: string;
 }

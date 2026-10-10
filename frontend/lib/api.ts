@@ -69,7 +69,9 @@ export async function refreshTokens(): Promise<string | null> {
 interface RequestOptions {
   method?: string;
   body?: unknown;
-  auth?: boolean;
+  // 'optional': lectura pública que, con sesión, manda el token para recibir
+  // datos propios (p. ej. tu reacción). Si la sesión ya no sirve, va como anónimo.
+  auth?: boolean | 'optional';
   query?: Record<string, string | number | undefined>;
 }
 
@@ -96,12 +98,14 @@ async function request<T>(
       body: body ? JSON.stringify(body) : undefined,
     });
 
-  let res = await send(auth ? getSession()?.accessToken : undefined);
+  const token = auth ? getSession()?.accessToken : undefined;
+  let res = await send(token);
 
-  if (res.status === 401 && auth) {
+  if (res.status === 401 && (auth === true || token)) {
     const fresh = await refreshTokens();
-    if (!fresh) return parseError(res);
-    res = await send(fresh);
+    if (fresh) res = await send(fresh);
+    else if (auth === 'optional') res = await send();
+    else return parseError(res);
   }
 
   if (!res.ok) return parseError(res);
@@ -226,17 +230,17 @@ export const api = {
       limit?: number;
     }) =>
       request<PaginatedPosts>(SERVICES.posts, '/posts', {
-        auth: false,
+        auth: 'optional',
         query,
       }),
     byId: (id: string) =>
-      request<Post>(SERVICES.posts, `/posts/${id}`, { auth: false }),
+      request<Post>(SERVICES.posts, `/posts/${id}`, { auth: 'optional' }),
     batch: (ids: string[]) =>
       ids.length
-        ? request<Post[]>(SERVICES.posts, '/posts/batch', { auth: false, query: { ids: ids.join(',') } })
+        ? request<Post[]>(SERVICES.posts, '/posts/batch', { auth: 'optional', query: { ids: ids.join(',') } })
         : Promise.resolve([] as Post[]),
     search: (query: { q: string; excludeAuthorId?: string; type?: PostType; limit?: number }) =>
-      request<SearchResult>(SERVICES.posts, '/posts/search', { auth: false, query }),
+      request<SearchResult>(SERVICES.posts, '/posts/search', { auth: 'optional', query }),
     myActivity: () => request<OwnPostActivity[]>(SERVICES.posts, '/posts/activity/mine'),
     markSeen: (id: string) => request<void>(SERVICES.posts, `/posts/${id}/seen`, { method: 'POST' }),
     commentsByAuthor: (authorId: string, limit = 30) =>
