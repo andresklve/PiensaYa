@@ -3,6 +3,8 @@ import { Ctx, EventPattern, Payload, RmqContext } from '@nestjs/microservices';
 import { FeedService } from './feed.service';
 import { POST_CREATED, POST_DELETED } from './events/post-events';
 import type { PostCreatedEvent, PostDeletedEvent } from './events/post-events';
+import { USER_FOLLOWED, USER_UNFOLLOWED } from './events/follow-events';
+import type { FollowEvent } from './events/follow-events';
 
 const RETRY_DELAY_MS = 3000;
 
@@ -47,6 +49,36 @@ export class FeedEventsController {
       this.ack(ctx);
     } catch (error) {
       this.retryLater(ctx, POST_DELETED, error);
+    }
+  }
+
+  @EventPattern(USER_FOLLOWED)
+  async onUserFollowed(@Payload() event: FollowEvent, @Ctx() ctx: RmqContext): Promise<void> {
+    if (!event?.followerId || !event?.followingId) {
+      this.logger.error(`Evento ${USER_FOLLOWED} malformado, se descarta`);
+      return this.ack(ctx);
+    }
+    try {
+      const added = await this.feedService.backfill(event);
+      this.logger.log(`${added} publicaciones de ${event.followingId} agregadas al feed de ${event.followerId}`);
+      this.ack(ctx);
+    } catch (error) {
+      this.retryLater(ctx, USER_FOLLOWED, error);
+    }
+  }
+
+  @EventPattern(USER_UNFOLLOWED)
+  async onUserUnfollowed(@Payload() event: FollowEvent, @Ctx() ctx: RmqContext): Promise<void> {
+    if (!event?.followerId || !event?.followingId) {
+      this.logger.error(`Evento ${USER_UNFOLLOWED} malformado, se descarta`);
+      return this.ack(ctx);
+    }
+    try {
+      await this.feedService.purge(event);
+      this.logger.log(`Publicaciones de ${event.followingId} retiradas del feed de ${event.followerId}`);
+      this.ack(ctx);
+    } catch (error) {
+      this.retryLater(ctx, USER_UNFOLLOWED, error);
     }
   }
 

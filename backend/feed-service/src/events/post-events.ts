@@ -6,7 +6,7 @@ export const POST_DELETED = 'post_deleted';
 export interface PostCreatedEvent {
   postId: string;
   authorId: string;
-  type: 'POST' | 'TWEET';
+  type: 'POST' | 'TWEET' | 'OPINION';
   title?: string;
   excerpt: string;
   createdAt: string;

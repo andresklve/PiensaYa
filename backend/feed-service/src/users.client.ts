@@ -35,6 +35,16 @@ export class UsersClient {
     return data.map((f) => f.userId);
   }
 
+  async getFollowingIds(userId: string): Promise<string[]> {
+    const { data } = await firstValueFrom(
+      this.http.get<FollowerItem[]>(
+        `${this.baseUrl()}/users/${encodeURIComponent(userId)}/following`,
+        { timeout: 5000 },
+      ),
+    );
+    return data.map((f) => f.userId);
+  }
+
   async getAuthorInfo(userId: string): Promise<AuthorInfo | undefined> {
     try {
       const { data } = await firstValueFrom(
