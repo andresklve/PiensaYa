@@ -48,6 +48,7 @@ describe('PostsService', () => {
       aggregate: jest.fn().mockResolvedValue([]),
       deleteMany: jest.fn().mockResolvedValue({}),
       updateOne: jest.fn().mockResolvedValue({}),
+      find: jest.fn().mockReturnValue(lean([])),
     };
     events = { postCreated: jest.fn(), postDeleted: jest.fn() };
 
@@ -173,19 +174,43 @@ describe('PostsService', () => {
         NotFoundException,
       );
     });
+
+    it('incluye la reacción de quien consulta', async () => {
+      postModel.findById.mockReturnValue(lean(existingPost));
+      reactionModel.find.mockReturnValue(lean([{ postId, type: ReactionType.FELIZ }]));
+
+      const result = await service.findOne(postId.toString(), other.userId);
+
+      expect(reactionModel.find).toHaveBeenCalledWith(
+        { postId: { $in: [postId] }, userId: other.userId },
+        { postId: 1, type: 1 },
+      );
+      expect(result.myReaction).toBe(ReactionType.FELIZ);
+    });
+
+    it('sin usuario devuelve myReaction null y no consulta reacciones propias', async () => {
+      postModel.findById.mockReturnValue(lean(existingPost));
+
+      const result = await service.findOne(postId.toString());
+
+      expect(reactionModel.find).not.toHaveBeenCalled();
+      expect(result.myReaction).toBeNull();
+    });
   });
 
   describe('react', () => {
-    it('hace upsert de la reacción del usuario', async () => {
+    it('hace upsert de la reacción del usuario y la devuelve como propia', async () => {
       postModel.findById.mockReturnValue(lean(existingPost));
+      reactionModel.find.mockReturnValue(lean([{ postId, type: ReactionType.LIKE }]));
 
-      await service.react(other.userId, postId.toString(), ReactionType.LIKE);
+      const result = await service.react(other.userId, postId.toString(), ReactionType.LIKE);
 
       expect(reactionModel.updateOne).toHaveBeenCalledWith(
         { postId, userId: other.userId },
         { $set: { type: ReactionType.LIKE } },
         { upsert: true },
       );
+      expect(result.myReaction).toBe(ReactionType.LIKE);
     });
   });
 

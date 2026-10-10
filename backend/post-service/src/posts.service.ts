@@ -91,16 +91,16 @@ export class PostsService implements OnModuleInit {
       createdAt: post.createdAt.toISOString(),
     });
 
-    return this.toPostResponse(post.toObject() as LeanPost, 0, {});
+    return this.toPostResponse(post.toObject() as LeanPost, 0, {}, null);
   }
 
-  async findOne(id: string): Promise<PostResponseDto> {
+  async findOne(id: string, viewerId?: string): Promise<PostResponseDto> {
     const post = await this.findPostOrThrow(id);
-    const [response] = await this.withCounts([post]);
+    const [response] = await this.withCounts([post], viewerId);
     return response;
   }
 
-  async list(query: ListPostsQueryDto): Promise<PaginatedPostsDto> {
+  async list(query: ListPostsQueryDto, viewerId?: string): Promise<PaginatedPostsDto> {
     const filter: Record<string, unknown> = {};
     if (query.authorId) filter.authorId = query.authorId;
     else if (query.excludeAuthorId) filter.authorId = { $ne: query.excludeAuthorId };
@@ -118,7 +118,7 @@ export class PostsService implements OnModuleInit {
     ]);
 
     return {
-      items: await this.withCounts(posts),
+      items: await this.withCounts(posts, viewerId),
       page: query.page,
       limit: query.limit,
       total,
@@ -155,7 +155,7 @@ export class PostsService implements OnModuleInit {
   // Buscador general: "calculo" encuentra los hashtags que lo contienen
   // (#calculo2, #calculo1…) y las publicaciones con esos hashtags o con la
   // palabra en el título o el texto, sin importar mayúsculas ni tildes.
-  async search(query: SearchQueryDto): Promise<SearchResultDto> {
+  async search(query: SearchQueryDto, viewerId?: string): Promise<SearchResultDto> {
     const needle = normalizeQuery(query.q);
     const words = query.q.replace(/#/g, ' ').trim();
     if (!needle) return { tags: [], posts: [] };
@@ -177,18 +177,18 @@ export class PostsService implements OnModuleInit {
       .sort({ createdAt: -1 })
       .limit(query.limit)
       .lean<LeanPost[]>();
-    return { tags, posts: await this.withCounts(posts) };
+    return { tags, posts: await this.withCounts(posts, viewerId) };
   }
 
   // Varias publicaciones en una sola llamada, en el orden pedido (las que no
   // existen se omiten). Evita N peticiones al hidratar un feed.
-  async findMany(ids: string[]): Promise<PostResponseDto[]> {
+  async findMany(ids: string[], viewerId?: string): Promise<PostResponseDto[]> {
     const valid = [...new Set(ids)].filter((id) => Types.ObjectId.isValid(id)).slice(0, BATCH_MAX);
     if (valid.length === 0) return [];
     const posts = await this.postModel
       .find({ _id: { $in: valid.map((id) => new Types.ObjectId(id)) } })
       .lean<LeanPost[]>();
-    const byId = new Map((await this.withCounts(posts)).map((p) => [p.id, p]));
+    const byId = new Map((await this.withCounts(posts, viewerId)).map((p) => [p.id, p]));
     return valid.flatMap((id) => (byId.has(id) ? [byId.get(id)!] : []));
   }
 
@@ -217,7 +217,7 @@ export class PostsService implements OnModuleInit {
       .sort((a, b) => b.lastActivityAt.getTime() - a.lastActivityAt.getTime());
 
     const responses = new Map(
-      (await this.withCounts(pending.map((x) => x.post))).map((r) => [r.id, r]),
+      (await this.withCounts(pending.map((x) => x.post), userId)).map((r) => [r.id, r]),
     );
     return pending.map((x) => ({
       post: responses.get(x.post._id.toString())!,
@@ -331,7 +331,7 @@ export class PostsService implements OnModuleInit {
       )
       .lean<LeanPost>();
 
-    const [response] = await this.withCounts([updated!]);
+    const [response] = await this.withCounts([updated!], user.userId);
     return response;
   }
 
@@ -419,7 +419,7 @@ export class PostsService implements OnModuleInit {
       { upsert: true },
     );
 
-    const [response] = await this.withCounts([post]);
+    const [response] = await this.withCounts([post], userId);
     return response;
   }
 
@@ -476,12 +476,12 @@ export class PostsService implements OnModuleInit {
     return new Types.ObjectId(id);
   }
 
-  private async withCounts(posts: LeanPost[]): Promise<PostResponseDto[]> {
+  private async withCounts(posts: LeanPost[], viewerId?: string): Promise<PostResponseDto[]> {
     if (posts.length === 0) return [];
 
     const ids = posts.map((p) => p._id);
 
-    const [commentCounts, reactionCounts] = await Promise.all([
+    const [commentCounts, reactionCounts, viewerReactions] = await Promise.all([
       this.commentModel.aggregate<{ _id: Types.ObjectId; count: number }>([
         { $match: { postId: { $in: ids } } },
         { $group: { _id: '$postId', count: { $sum: 1 } } },
@@ -498,8 +498,14 @@ export class PostsService implements OnModuleInit {
           },
         },
       ]),
+      viewerId
+        ? this.reactionModel
+            .find({ postId: { $in: ids }, userId: viewerId }, { postId: 1, type: 1 })
+            .lean<{ postId: Types.ObjectId; type: ReactionType }[]>()
+        : Promise.resolve([]),
     ]);
 
+    const mineByPost = new Map(viewerReactions.map((r) => [r.postId.toString(), r.type]));
     const commentsByPost = new Map(
       commentCounts.map((c) => [c._id.toString(), c.count]),
     );
@@ -520,6 +526,7 @@ export class PostsService implements OnModuleInit {
         p,
         commentsByPost.get(key) ?? 0,
         reactionsByPost.get(key) ?? {},
+        mineByPost.get(key) ?? null,
       );
     });
   }
@@ -528,6 +535,7 @@ export class PostsService implements OnModuleInit {
     post: LeanPost,
     commentsCount: number,
     reactions: Partial<Record<ReactionType, number>>,
+    myReaction: ReactionType | null,
   ): PostResponseDto {
     return {
       id: post._id.toString(),
@@ -538,6 +546,7 @@ export class PostsService implements OnModuleInit {
       tags: post.tags ?? [],
       commentsCount,
       reactions,
+      myReaction,
       createdAt: post.createdAt,
       updatedAt: post.updatedAt,
     };

@@ -30,6 +30,13 @@ export class PostResponseDto {
   })
   reactions: Partial<Record<ReactionType, number>>;
 
+  @ApiProperty({
+    enum: ReactionType,
+    nullable: true,
+    description: 'Tu reacción a esta publicación (null si no reaccionaste o no enviaste token)',
+  })
+  myReaction: ReactionType | null;
+
   @ApiProperty()
   createdAt: Date;
 
