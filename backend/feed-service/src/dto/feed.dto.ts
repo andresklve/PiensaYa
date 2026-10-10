@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
 
 export class FeedQueryDto {
   @ApiPropertyOptional({ default: 1 })
@@ -32,8 +32,8 @@ export class FeedItemDto {
   @ApiPropertyOptional()
   authorUsername?: string;
 
-  @ApiProperty({ enum: ['POST', 'TWEET'] })
-  type: 'POST' | 'TWEET';
+  @ApiProperty({ enum: ['POST', 'TWEET', 'OPINION'] })
+  type: 'POST' | 'TWEET' | 'OPINION';
 
   @ApiPropertyOptional()
   title?: string;
@@ -57,4 +57,43 @@ export class FeedPageDto {
 
   @ApiProperty({ description: 'Entradas en el feed (incluye las de posts ya eliminados que aún no se limpiaron)' })
   total: number;
+}
+
+export class ForYouQueryDto {
+  @ApiPropertyOptional({ enum: ['POST', 'TWEET', 'OPINION'] })
+  @IsOptional()
+  @IsIn(['POST', 'TWEET', 'OPINION'])
+  type?: 'POST' | 'TWEET' | 'OPINION';
+
+  @ApiPropertyOptional({ default: 30 })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(50)
+  limit: number = 30;
+}
+
+export class ForYouItemDto {
+  @ApiProperty() id: string;
+  @ApiProperty() authorId: string;
+  @ApiProperty({ enum: ['POST', 'TWEET', 'OPINION'] }) type: 'POST' | 'TWEET' | 'OPINION';
+  @ApiPropertyOptional() title?: string;
+  @ApiProperty() content: string;
+  @ApiPropertyOptional({ type: [String] }) tags?: string[];
+  @ApiProperty() commentsCount: number;
+  @ApiProperty({ type: Object }) reactions: Record<string, number>;
+  @ApiProperty() createdAt: string;
+  @ApiProperty() updatedAt: string;
+
+  @ApiProperty({
+    enum: ['following', 'discovery'],
+    description: 'following = de alguien que sigues; discovery = sugerido para descubrir',
+  })
+  reason: 'following' | 'discovery';
+}
+
+export class ForYouDto {
+  @ApiProperty({ type: [ForYouItemDto] })
+  items: ForYouItemDto[];
 }

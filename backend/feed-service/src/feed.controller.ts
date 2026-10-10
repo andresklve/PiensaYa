@@ -6,7 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FeedService } from './feed.service';
-import { FeedPageDto, FeedQueryDto } from './dto/feed.dto';
+import { FeedPageDto, FeedQueryDto, ForYouDto, ForYouQueryDto } from './dto/feed.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthUser } from './strategies/jwt.strategy';
@@ -15,6 +15,18 @@ import type { AuthUser } from './strategies/jwt.strategy';
 @Controller('feed')
 export class FeedController {
   constructor(private readonly feedService: FeedService) {}
+
+  @Get('for-you')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Para ti: 3 de quienes sigo por cada 1 de descubrimiento (por interacción y recencia), sin publicaciones propias',
+  })
+  @ApiResponse({ status: 200, type: ForYouDto })
+  getForYou(@CurrentUser() user: AuthUser, @Query() query: ForYouQueryDto): Promise<ForYouDto> {
+    return this.feedService.forYou(user.userId, query.type, query.limit);
+  }
 
   @Get()
   @UseGuards(JwtAuthGuard)
