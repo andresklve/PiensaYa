@@ -30,7 +30,9 @@ import { PaginatedPostsDto, PostResponseDto } from './dto/post-response.dto';
 import { CommentResponseDto } from './dto/comment-response.dto';
 import { CommentWithContextDto, OwnPostActivityDto } from './dto/activity.dto';
 import { SearchQueryDto, SearchResultDto } from './dto/search.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { perMinute } from './throttle/throttle';
 import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
 import { CurrentUser, ViewerId } from './decorators/current-user.decorator';
 
@@ -40,7 +42,9 @@ export class PostsController {
   constructor(private readonly postsService: PostsService) {}
 
   @Post()
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ThrottlerGuard, JwtAuthGuard)
+  @Throttle(perMinute(10))
+  @ApiResponse({ status: 429, description: 'Demasiadas publicaciones seguidas' })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Publicar un artículo (POST), un apunte (TWEET) o una opinión (OPINION)' })
   @ApiResponse({ status: 201, type: PostResponseDto })
@@ -157,7 +161,9 @@ export class PostsController {
   }
 
   @Post(':id/comments')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ThrottlerGuard, JwtAuthGuard)
+  @Throttle(perMinute(20))
+  @ApiResponse({ status: 429, description: 'Demasiados comentarios seguidos' })
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Comentar una publicación' })
   @ApiResponse({ status: 201, type: CommentResponseDto })
@@ -191,7 +197,8 @@ export class PostsController {
   }
 
   @Put(':id/reactions')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ThrottlerGuard, JwtAuthGuard)
+  @Throttle(perMinute(60))
   @ApiBearerAuth()
   @ApiOperation({
     summary: 'Reaccionar a una publicación (crea o cambia tu reacción)',

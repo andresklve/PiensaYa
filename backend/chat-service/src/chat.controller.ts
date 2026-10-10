@@ -23,7 +23,9 @@ import {
   ConversationSummaryDto,
   MessageResponseDto,
 } from './dto/message-response.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { perMinute } from './throttle/throttle';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthUser } from './strategies/jwt.strategy';
 
@@ -47,7 +49,9 @@ export class ChatController {
   }
 
   @Get(':otherUserId/messages')
-  @ApiOperation({ summary: 'Historial de mensajes con otro usuario (paginado)' })
+  @ApiOperation({
+    summary: 'Historial de mensajes con otro usuario (paginado)',
+  })
   @ApiResponse({ status: 200, type: [MessageResponseDto] })
   getHistory(
     @CurrentUser() user: AuthUser,
@@ -63,12 +67,19 @@ export class ChatController {
   }
 
   @Post(':otherUserId/messages')
+  @UseGuards(ThrottlerGuard)
+  @Throttle(perMinute(30))
+  @ApiResponse({ status: 429, description: 'Demasiados mensajes seguidos' })
   @ApiOperation({
     summary:
       'Enviar un mensaje por REST (también se entrega en tiempo real por WebSocket)',
   })
   @ApiResponse({ status: 201, type: MessageResponseDto })
   @ApiResponse({ status: 404, description: 'El destinatario no existe' })
+  @ApiResponse({
+    status: 403,
+    description: 'Solicitud no aceptada y ya se enviaron 3 mensajes',
+  })
   async sendMessage(
     @CurrentUser() user: AuthUser,
     @Param('otherUserId') otherUserId: string,
@@ -98,7 +109,9 @@ export class ChatController {
   }
 
   @Patch(':otherUserId/read')
-  @ApiOperation({ summary: 'Marcar como leídos los mensajes recibidos de ese usuario' })
+  @ApiOperation({
+    summary: 'Marcar como leídos los mensajes recibidos de ese usuario',
+  })
   @ApiResponse({ status: 200 })
   async markAsRead(
     @CurrentUser() user: AuthUser,

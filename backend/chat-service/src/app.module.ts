@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ThrottleModule } from './throttle/throttle';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import { ChatModule } from './chat.module';
@@ -6,6 +7,7 @@ import { ChatModule } from './chat.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottleModule,
     MongooseModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({

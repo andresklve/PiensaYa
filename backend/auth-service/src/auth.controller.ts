@@ -21,7 +21,9 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { AuthResponseDto } from './dto/auth-response.dto';
 import { MeResponseDto } from './dto/me-response.dto';
+import { Throttle, ThrottlerGuard } from '@nestjs/throttler';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { perMinute } from './throttle/throttle';
 import { CurrentUser } from './decorators/current-user.decorator';
 import type { AuthUser } from './strategies/jwt.strategy';
 
@@ -31,6 +33,9 @@ export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @UseGuards(ThrottlerGuard)
+  @Throttle(perMinute(5))
+  @ApiResponse({ status: 429, description: 'Demasiados intentos' })
   @ApiOperation({ summary: 'Registrar un nuevo usuario' })
   @ApiResponse({ status: 201, type: AuthResponseDto })
   @ApiResponse({ status: 409, description: 'El nombre de usuario ya está en uso' })
@@ -39,6 +44,9 @@ export class AuthController {
   }
 
   @Post('login')
+  @UseGuards(ThrottlerGuard)
+  @Throttle(perMinute(10))
+  @ApiResponse({ status: 429, description: 'Demasiados intentos' })
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Iniciar sesión' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
@@ -48,6 +56,8 @@ export class AuthController {
   }
 
   @Post('refresh')
+  @UseGuards(ThrottlerGuard)
+  @Throttle(perMinute(30))
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Renovar el access token usando el refresh token' })
   @ApiResponse({ status: 200, type: AuthResponseDto })
@@ -68,7 +78,8 @@ export class AuthController {
 
   @Patch('change-password')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(ThrottlerGuard, JwtAuthGuard)
+  @Throttle(perMinute(5))
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Cambiar la contraseña del usuario autenticado' })
   @ApiResponse({ status: 204 })
