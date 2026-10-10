@@ -1,26 +1,249 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/* Sistema "Cuaderno": base blanco/negro con grises de ligero tinte cálido y un
+   único acento, el amarillo marcador. El amarillo nunca se usa como color de
+   texto sobre fondo claro (no tiene contraste): solo como fondo, subrayado o
+   marca, siempre con --accent-ink encima. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #ffffff;
+  --surface: #f4f4f1;
+  --surface-hover: #ebebe7;
+  --border: #e6e6e2;
+  --dot: #c2c2ba;
+  --fg: #111110;
+  --fg-muted: #5c5c57;
+  --fg-subtle: #8a8a84;
+  --accent: #ffd60a;
+  --accent-ink: #111110;
+  --accent-soft: rgb(255 214 10 / 0.28);
+  --danger: #c8261b;
+  --danger-soft: rgb(200 38 27 / 0.09);
+  --overlay: rgb(255 255 255 / 0.88);
+  --shadow-elevated: 0 1px 2px rgb(17 17 16 / 0.06), 0 12px 32px -12px rgb(17 17 16 / 0.22);
+  /* Claro: trazo en la mitad inferior, el texto conserva su color.
+     Oscuro: el marcador cubre la palabra y el texto pasa a tinta negra,
+     porque texto claro sobre amarillo no tiene contraste. */
+  --mark-h: 42%;
+  --mark-ink: currentColor;
+  --tab-mark-h: 0.55em;
+  --tab-mark-bottom: 0.05em;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+[data-theme="dark"] {
+  --bg: #0b0b0a;
+  --surface: #161615;
+  --surface-hover: #1f1f1d;
+  --border: #282826;
+  --dot: #45453f;
+  --fg: #f2f2ee;
+  --fg-muted: #a5a59f;
+  --fg-subtle: #6f6f69;
+  --accent-soft: rgb(255 214 10 / 0.18);
+  --danger: #ff6b5e;
+  --danger-soft: rgb(255 107 94 / 0.14);
+  --overlay: rgb(11 11 10 / 0.85);
+  --shadow-elevated: 0 1px 2px rgb(0 0 0 / 0.5), 0 12px 32px -12px rgb(0 0 0 / 0.8);
+  --mark-h: 100%;
+  --mark-ink: var(--accent-ink);
+  --tab-mark-h: 1.45em;
+  --tab-mark-bottom: -0.2em;
+  color-scheme: dark;
 }
 
+/* Sin JS (o antes de hidratar) se respeta la preferencia del sistema. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  :root:not([data-theme]) {
+    --bg: #0b0b0a;
+    --surface: #161615;
+    --surface-hover: #1f1f1d;
+    --border: #282826;
+    --dot: #45453f;
+    --fg: #f2f2ee;
+    --fg-muted: #a5a59f;
+    --fg-subtle: #6f6f69;
+    --accent-soft: rgb(255 214 10 / 0.18);
+    --danger: #ff6b5e;
+    --danger-soft: rgb(255 107 94 / 0.14);
+    --overlay: rgb(11 11 10 / 0.85);
+    --shadow-elevated: 0 1px 2px rgb(0 0 0 / 0.5), 0 12px 32px -12px rgb(0 0 0 / 0.8);
+    --mark-h: 100%;
+    --mark-ink: var(--accent-ink);
+    --tab-mark-h: 1.45em;
+    --tab-mark-bottom: -0.2em;
+    color-scheme: dark;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-hover);
+  --color-border: var(--border);
+  --color-dot: var(--dot);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-overlay: var(--overlay);
+
+  --font-sans: var(--font-atkinson), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-bricolage), var(--font-atkinson), ui-sans-serif, system-ui, sans-serif;
+
+  --shadow-elevated: var(--shadow-elevated);
+}
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+/* Trazo de marcador detrás del texto. .mark está siempre pintado; .mark-swipe
+   se pinta de izquierda a derecha con .is-on, y .mark-swipe-hover al pasar el
+   cursor por el .group que lo contiene. */
+.mark,
+.mark-swipe,
+.mark-swipe-hover {
+  background-image: linear-gradient(var(--accent), var(--accent));
+  background-repeat: no-repeat;
+  background-position: 0 88%;
+  border-radius: 2px;
+  padding-inline: 0.08em;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
+.mark {
+  background-size: 100% var(--mark-h);
+  color: var(--mark-ink);
+}
+
+.mark-swipe,
+.mark-swipe-hover {
+  background-size: 0% var(--mark-h);
+  transition:
+    background-size 320ms cubic-bezier(0.3, 0.8, 0.3, 1),
+    color 160ms ease 80ms;
+}
+
+.mark-swipe.is-on,
+.group:hover .mark-swipe-hover {
+  background-size: 100% var(--mark-h);
+  color: var(--mark-ink);
+}
+
+/* Hoja punteada de cuaderno: estados vacíos, portada de perfil, auth. */
+.paper-dots {
+  background-color: var(--surface);
+  background-image: radial-gradient(var(--dot) 1.2px, transparent 1.4px);
+  background-size: 18px 18px;
+}
+
+/* Patrones generativos del avatar sin foto (usan currentColor). */
+.pattern-0 {
+  background-image: radial-gradient(currentColor 1.6px, transparent 1.8px);
+  background-size: 7px 7px;
+}
+.pattern-1 {
+  background-image: repeating-linear-gradient(45deg, currentColor 0 2px, transparent 2px 7px);
+}
+.pattern-2 {
+  background-image:
+    linear-gradient(currentColor 1.5px, transparent 1.5px),
+    linear-gradient(90deg, currentColor 1.5px, transparent 1.5px);
+  background-size: 8px 8px;
+}
+.pattern-3 {
+  background-image: repeating-radial-gradient(circle at 0 0, transparent 0 4px, currentColor 4px 5.5px);
+}
+.pattern-4 {
+  background-image: repeating-linear-gradient(-45deg, currentColor 0 1.5px, transparent 1.5px 5px),
+    repeating-linear-gradient(45deg, currentColor 0 1.5px, transparent 1.5px 5px);
+}
+.pattern-5 {
+  background-image: repeating-linear-gradient(0deg, currentColor 0 2px, transparent 2px 6px);
+}
+
+@keyframes marker-stroke {
+  0%,
+  100% {
+    transform: scaleX(0.25);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+}
+
+/* Solo durante el cambio de tema: transición de colores en todo el layout. */
+html.theme-transition,
+html.theme-transition *,
+html.theme-transition *::before,
+html.theme-transition *::after {
+  transition:
+    background-color 300ms ease,
+    border-color 300ms ease,
+    color 300ms ease,
+    fill 300ms ease !important;
+}
+
+/* Foco visible en ambos temas: trazo del color del texto + halo amarillo.
+   Va en la capa base para que las utilidades de cada componente (outline-none,
+   focus:…) puedan reemplazarlo. Los campos de texto no lo usan: cada uno
+   marca el foco en su propio borde o en el de su contenedor (focus-within),
+   así nunca hay dos indicadores a la vez. */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--fg);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 6px var(--accent-soft);
+  }
+
+  :where(
+      input:not([type="checkbox"], [type="radio"], [type="range"], [type="button"], [type="submit"], [type="reset"], [type="file"], [type="color"]),
+      textarea,
+      select,
+      [contenteditable]
+    ):focus-visible {
+    outline: none;
+    box-shadow: none;
+  }
+}
+
+/* Seleccionar texto es subrayarlo. */
+::selection {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

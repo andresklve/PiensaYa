@@ -20,6 +20,7 @@ export interface Profile {
   lastName: string;
   bio: string | null;
   avatarUrl: string | null;
+  coverUrl: string | null;
   followersCount: number;
   followingCount: number;
 }
@@ -32,7 +33,10 @@ export interface FollowerItem {
   avatarUrl: string | null;
 }
 
-export type PostType = 'POST' | 'TWEET';
+// POST = artículo, TWEET = apunte (≤280), OPINION = opinión (≤600).
+export type PostType = 'POST' | 'TWEET' | 'OPINION';
+
+export const POST_LIMITS: Partial<Record<PostType, number>> = { TWEET: 280, OPINION: 600 };
 
 export type ReactionType =
   | 'LIKE'
@@ -43,12 +47,12 @@ export type ReactionType =
   | 'INTERESANTE';
 
 export const REACTIONS: { type: ReactionType; label: string }[] = [
-  { type: 'LIKE', label: '👍 Like' },
-  { type: 'DISLIKE', label: '👎 Dislike' },
-  { type: 'FELIZ', label: '😀 Feliz' },
-  { type: 'TRISTE', label: '😢 Triste' },
-  { type: 'ENOJADO', label: '😠 Enojado' },
-  { type: 'INTERESANTE', label: '🤔 Interesante' },
+  { type: 'LIKE', label: 'Subrayar' },
+  { type: 'INTERESANTE', label: 'Interesante' },
+  { type: 'FELIZ', label: 'Me alegra' },
+  { type: 'TRISTE', label: 'Me entristece' },
+  { type: 'ENOJADO', label: 'Me molesta' },
+  { type: 'DISLIKE', label: 'No me convence' },
 ];
 
 export interface Post {
@@ -57,6 +61,8 @@ export interface Post {
   type: PostType;
   title?: string;
   content: string;
+  // Hashtags normalizados (sin #, minúsculas, sin tildes).
+  tags?: string[];
   commentsCount: number;
   reactions: Partial<Record<ReactionType, number>>;
   createdAt: string;
@@ -68,6 +74,32 @@ export interface PaginatedPosts {
   page: number;
   limit: number;
   total: number;
+}
+
+export interface TagCount {
+  tag: string;
+  count: number;
+}
+
+export interface SearchResult {
+  tags: TagCount[];
+  posts: Post[];
+}
+
+// Publicación de "Para ti" con el motivo por el que aparece.
+export type ForYouItem = Post & { reason: 'following' | 'discovery' };
+
+// Publicación propia con comentarios/reacciones de otras personas sin ver.
+export interface OwnPostActivity {
+  post: Post;
+  newComments: number;
+  newReactions: number;
+  lastActivityAt: string;
+}
+
+export interface CommentWithContext {
+  comment: Comment;
+  post: { id: string; authorId: string; type: PostType; title?: string; excerpt: string } | null;
 }
 
 export interface Comment {
