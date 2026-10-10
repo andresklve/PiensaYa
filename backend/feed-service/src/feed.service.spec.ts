@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
-import { FeedService, discoveryScore, feedKey, postKey, syncedKey } from './feed.service';
+import { FeedService, discoveryScore, feedKey, deletedKey, postKey, syncedKey } from './feed.service';
 import { UsersClient } from './users.client';
 import { PostsClient, PostView } from './posts.client';
 import { PostCreatedEvent } from './events/post-events';
@@ -9,6 +9,7 @@ describe('FeedService', () => {
   let service: FeedService;
   let pipeline: Record<string, jest.Mock>;
   let redis: Record<string, jest.Mock>;
+  let removeTx: Record<string, jest.Mock>;
   let usersClient: { getFollowerIds: jest.Mock; getAuthorInfo: jest.Mock; getFollowingIds: jest.Mock };
   let postsClient: { list: jest.Mock; batch: jest.Mock };
   let conn: Record<string, jest.Mock>;
@@ -35,7 +36,8 @@ describe('FeedService', () => {
       del: jest.fn(),
       lrange: jest.fn(),
       llen: jest.fn(),
-      mget: jest.fn(),
+      mget: jest.fn().mockResolvedValue([]),
+      exists: jest.fn().mockResolvedValue(0),
       // Por defecto el feed ya está sincronizado (SET NX no reclama la marca).
       set: jest.fn().mockResolvedValue(null),
     };
@@ -56,6 +58,10 @@ describe('FeedService', () => {
       disconnect: jest.fn(),
     };
     redis.duplicate = jest.fn().mockReturnValue(conn);
+    removeTx = { set: jest.fn(), del: jest.fn(), exec: jest.fn().mockResolvedValue([]) };
+    removeTx.set.mockReturnValue(removeTx);
+    removeTx.del.mockReturnValue(removeTx);
+    redis.multi = jest.fn().mockReturnValue(removeTx);
 
     service = new FeedService(
       redis as unknown as Redis,
@@ -94,6 +100,27 @@ describe('FeedService', () => {
       await expect(service.fanOut(event)).rejects.toThrow('ECONNREFUSED');
       expect(pipeline.exec).not.toHaveBeenCalled();
     });
+
+    it('no reparte un post que ya fue borrado (lápida)', async () => {
+      redis.exists.mockResolvedValue(1);
+
+      const recipients = await service.fanOut(event);
+
+      expect(recipients).toBe(0);
+      expect(redis.exists).toHaveBeenCalledWith(deletedKey('p1'));
+      expect(usersClient.getFollowerIds).not.toHaveBeenCalled();
+      expect(pipeline.exec).not.toHaveBeenCalled();
+    });
+
+    it('si lo borran mientras se reparte, quita el snapshot recién escrito', async () => {
+      // La lápida aparece después del chequeo inicial (borrado concurrente).
+      redis.mget.mockResolvedValue(['1']);
+
+      await service.fanOut(event);
+
+      expect(pipeline.exec).toHaveBeenCalled();
+      expect(redis.del).toHaveBeenCalledWith(postKey('p1'));
+    });
   });
 
   describe('getFeed', () => {
@@ -121,9 +148,11 @@ describe('FeedService', () => {
   });
 
   describe('removePost', () => {
-    it('borra el snapshot compartido del post', async () => {
+    it('deja la lápida y borra el snapshot en una sola transacción', async () => {
       await service.removePost({ postId: 'p1', authorId: 'author' });
-      expect(redis.del).toHaveBeenCalledWith(postKey('p1'));
+      expect(removeTx.set).toHaveBeenCalledWith(deletedKey('p1'), '1', 'EX', expect.any(Number));
+      expect(removeTx.del).toHaveBeenCalledWith(postKey('p1'));
+      expect(removeTx.exec).toHaveBeenCalled();
     });
   });
 

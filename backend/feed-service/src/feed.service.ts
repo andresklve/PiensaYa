@@ -23,6 +23,9 @@ export const feedKey = (userId: string) => `feed:${userId}`;
 export const postKey = (postId: string) => `feedpost:${postId}`;
 // Marca de que el feed ya incluye lo anterior de todas las personas seguidas.
 export const syncedKey = (userId: string) => `feedsync:v1:${userId}`;
+// Lápida de un post borrado (ver removePost).
+export const deletedKey = (postId: string) => `feeddeleted:${postId}`;
+const DELETED_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 @Injectable()
 export class FeedService {
@@ -39,6 +42,10 @@ export class FeedService {
   }
 
   async fanOut(event: PostCreatedEvent): Promise<number> {
+    // post_created y post_deleted se procesan en paralelo: si el borrado ya
+    // pasó (o el evento de creación es un reintento viejo), no se reparte.
+    if (await this.redis.exists(deletedKey(event.postId))) return 0;
+
     const followerIds = await this.usersClient.getFollowerIds(event.authorId);
     const author = await this.usersClient.getAuthorInfo(event.authorId);
 
@@ -64,14 +71,31 @@ export class FeedService {
       pipeline.ltrim(feedKey(userId), 0, this.maxLength - 1);
     }
     await pipeline.exec();
+    await this.dropIfDeleted([event.postId]);
 
     return recipients.length;
   }
 
   async removePost(event: PostDeletedEvent): Promise<void> {
     // Borrar el snapshot lo hace desaparecer de todos los feeds al instante;
-    // las referencias huérfanas en cada lista se limpian al leer el feed.
-    await this.redis.del(postKey(event.postId));
+    // las referencias huérfanas en cada lista se limpian al leer el feed. La
+    // lápida evita que un post_created que llegue después lo vuelva a escribir.
+    await this.redis
+      .multi()
+      .set(deletedKey(event.postId), '1', 'EX', DELETED_TTL_SECONDS)
+      .del(postKey(event.postId))
+      .exec();
+  }
+
+  // Segunda mitad de la protección contra la carrera con removePost: si la
+  // lápida apareció mientras se escribía el snapshot, se borra. Como removePost
+  // pone la lápida y borra el snapshot en un MULTI, en cualquier orden de
+  // ejecución el post termina sin snapshot.
+  private async dropIfDeleted(postIds: string[]): Promise<void> {
+    if (postIds.length === 0) return;
+    const flags = await this.redis.mget(postIds.map(deletedKey));
+    const deleted = postIds.filter((_, i) => flags[i]);
+    if (deleted.length > 0) await this.redis.del(...deleted.map(postKey));
   }
 
   async getFeed(userId: string, page: number, limit: number): Promise<FeedPageDto> {
@@ -130,6 +154,7 @@ export class FeedService {
     const snapshots = this.redis.pipeline();
     for (const item of items) snapshots.set(postKey(item.postId), JSON.stringify(item), 'NX');
     await snapshots.exec();
+    await this.dropIfDeleted(items.map((i) => i.postId));
 
     await this.rewriteFeed(event.followerId, (entries) => [
       ...entries,
