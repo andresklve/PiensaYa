@@ -1,0 +1,11 @@
+minimumReleaseAgeExclude:
+  - libphonenumber-js@1.13.15
+  - node-releases@2.0.58
+
+allowBuilds:
+  '@parcel/watcher': true
+  '@prisma/client': true
+  '@prisma/engines': true
+  '@scarf/scarf': true
+  prisma: true
+  unrs-resolver: true
