@@ -1,9 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
 import { useAuth } from '@/lib/auth-context';
-import { Button, Card, ErrorText, Input, Label } from '@/components/ui';
+import { AuthLayout } from '@/components/auth-layout';
+import { Button, ErrorText, Input, Label, TextLink } from '@/components/ui';
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -26,22 +26,29 @@ export default function LoginPage() {
   }
 
   return (
-    <Card className="mt-8">
-      <h1 className="text-lg font-bold">Iniciar sesión</h1>
-      <form onSubmit={onSubmit} className="mt-4 space-y-3">
+    <AuthLayout>
+      <h1 className="font-display text-[32px] font-extrabold leading-tight tracking-[-0.02em]">
+        Vuelve a tu <span className="mark">cuaderno</span>
+      </h1>
+      <p className="mt-2 text-fg-muted">Inicia sesión con tu nombre de usuario.</p>
+
+      <form onSubmit={onSubmit} className="mt-8 space-y-5">
         <div>
-          <Label>Usuario</Label>
+          <Label htmlFor="username">Usuario</Label>
           <Input
+            id="username"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
-            placeholder="carlos_andres"
+            placeholder="tu_usuario"
             autoComplete="username"
+            autoCapitalize="none"
             required
           />
         </div>
         <div>
-          <Label>Contraseña</Label>
+          <Label htmlFor="password">Contraseña</Label>
           <Input
+            id="password"
             type="password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -49,17 +56,18 @@ export default function LoginPage() {
             required
           />
         </div>
+
         <ErrorText error={error} />
-        <Button type="submit" disabled={busy}>
-          {busy ? 'Entrando...' : 'Entrar'}
+
+        <Button type="submit" disabled={busy} size="lg" className="w-full">
+          {busy ? 'Entrando…' : 'Iniciar sesión'}
         </Button>
       </form>
-      <p className="mt-4 text-sm text-gray-600">
-        ¿No tienes cuenta?{' '}
-        <Link href="/registro" className="underline">
-          Regístrate
-        </Link>
+
+      <p className="mt-10 text-[15px] text-fg-muted">
+        ¿No tienes una cuenta?{' '}
+        <TextLink href="/registro">Regístrate</TextLink>
       </p>
-    </Card>
+    </AuthLayout>
   );
 }

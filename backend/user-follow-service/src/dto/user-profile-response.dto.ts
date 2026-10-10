@@ -19,6 +19,9 @@ export class UserProfileResponseDto {
   @ApiPropertyOptional()
   avatarUrl: string | null;
 
+  @ApiPropertyOptional()
+  coverUrl: string | null;
+
   @ApiProperty()
   followersCount: number;
 

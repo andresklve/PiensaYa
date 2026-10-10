@@ -8,7 +8,9 @@ import {
   useSyncExternalStore,
 } from 'react';
 import { useRouter } from 'next/navigation';
+import { useQueryClient } from '@tanstack/react-query';
 import { api } from './api';
+import { useMounted } from './use-mounted';
 import {
   clearSession,
   getServerSessionSnapshot,
@@ -39,13 +41,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     getServerSessionSnapshot,
   );
   const router = useRouter();
+  const queryClient = useQueryClient();
 
+  // Al cambiar de cuenta se descarta la caché: nada de la sesión anterior
+  // (a quién sigues, reacciones, mensajes) debe verse en la nueva.
   const login = useCallback(
     async (username: string, password: string) => {
-      saveSession(await api.auth.login({ username, password }));
+      const auth = await api.auth.login({ username, password });
+      queryClient.clear();
+      saveSession(auth);
       router.push('/feed');
     },
-    [router],
+    [router, queryClient],
   );
 
   const register = useCallback(
@@ -55,10 +62,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       firstName: string;
       lastName: string;
     }) => {
-      saveSession(await api.auth.register(body));
+      const auth = await api.auth.register(body);
+      queryClient.clear();
+      saveSession(auth);
       router.push('/feed');
     },
-    [router],
+    [router, queryClient],
   );
 
   const logout = useCallback(async () => {
@@ -68,8 +77,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       /* el token pudo expirar; la sesión local se limpia igual */
     }
     clearSession();
+    queryClient.clear();
     router.push('/login');
-  }, [router]);
+  }, [router, queryClient]);
 
   const value = useMemo(
     () => ({ session, login, register, logout }),
@@ -79,8 +89,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
+// El provider vive fuera del <Suspense> del layout: hidrata antes y ya expone la
+// sesión real cuando el contenido suspendido recién está hidratando con el HTML
+// del servidor (renderizado sin sesión). Cada consumidor ve null hasta montar.
 export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
+  const mounted = useMounted();
   if (!ctx) throw new Error('useAuth debe usarse dentro de AuthProvider');
-  return ctx;
+  return mounted ? ctx : { ...ctx, session: null };
 }

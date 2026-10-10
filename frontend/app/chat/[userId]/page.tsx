@@ -1,9 +1,10 @@
 import { Suspense } from 'react';
+import { Spinner } from '@/components/ui';
 import ConversationView from './conversation';
 
 export default function ConversationPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-gray-500">Cargando...</p>}>
+    <Suspense fallback={<Spinner />}>
       <ConversationView />
     </Suspense>
   );

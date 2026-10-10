@@ -20,5 +20,22 @@ services:
       - "5672:5672"
       - "15672:15672"
 
+  # Almacenamiento de imágenes (fotos de perfil y portadas) con API de S3.
+  # En local usamos S3Mock (las imágenes oficiales de MinIO dejaron de
+  # publicarse); en AWS se reemplaza por un bucket real cambiando solo las
+  # variables STORAGE_* del User & Follow Service.
+  s3:
+    image: adobe/s3mock:3.12.0
+    container_name: piensaya-s3
+    environment:
+      initialBuckets: piensaya-media
+      root: /data
+      retainFilesOnExit: "true"
+    ports:
+      - "9090:9090"
+    volumes:
+      - s3-data:/data
+
 volumes:
   mongo-data:
+  s3-data:

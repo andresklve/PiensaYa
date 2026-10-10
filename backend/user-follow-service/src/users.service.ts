@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -9,10 +10,23 @@ import { CreateUserProfileDto } from './dto/create-user-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserProfileResponseDto } from './dto/user-profile-response.dto';
 import { FollowerItemDto } from './dto/follower-item.dto';
+import { StorageService } from './storage/storage.service';
+import { FollowEventsPublisher } from './events/follow-events.publisher';
+import {
+  ProfileImageKind,
+  processProfileImage,
+} from './storage/profile-images';
+import type { UploadedImage } from './storage/profile-images';
+
+const IMAGE_FIELD = { avatar: 'avatarUrl', cover: 'coverUrl' } as const;
 
 @Injectable()
 export class UsersService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly storage: StorageService,
+    private readonly followEvents: FollowEventsPublisher,
+  ) {}
 
   async createProfile(
     dto: CreateUserProfileDto,
@@ -80,6 +94,46 @@ export class UsersService {
     return this.toResponseDto(profile, followersCount, followingCount);
   }
 
+  // Procesa la imagen, la sube con un nombre nuevo (las URLs son inmutables y
+  // cacheables) y recién después borra la anterior.
+  async setProfileImage(
+    userId: string,
+    kind: ProfileImageKind,
+    file: UploadedImage | undefined,
+  ): Promise<UserProfileResponseDto> {
+    if (!file) {
+      throw new BadRequestException('Adjunta una imagen en el campo "file"');
+    }
+    const previous = await this.findProfileOrThrow(userId);
+    const image = await processProfileImage(file.buffer, kind);
+    const url = await this.storage.put(
+      `${kind}s/${userId}/${randomUUID()}.webp`,
+      image,
+      'image/webp',
+    );
+
+    await this.prisma.userProfile.update({
+      where: { userId },
+      data: { [IMAGE_FIELD[kind]]: url },
+    });
+    await this.storage.deleteByUrl(previous[IMAGE_FIELD[kind]]);
+
+    return this.getProfile(userId);
+  }
+
+  async removeProfileImage(
+    userId: string,
+    kind: ProfileImageKind,
+  ): Promise<UserProfileResponseDto> {
+    const previous = await this.findProfileOrThrow(userId);
+    await this.prisma.userProfile.update({
+      where: { userId },
+      data: { [IMAGE_FIELD[kind]]: null },
+    });
+    await this.storage.deleteByUrl(previous[IMAGE_FIELD[kind]]);
+    return this.getProfile(userId);
+  }
+
   async follow(followerId: string, followingId: string): Promise<void> {
     if (followerId === followingId) {
       throw new BadRequestException('No puedes seguirte a ti mismo');
@@ -96,6 +150,7 @@ export class UsersService {
     }
 
     await this.prisma.follow.create({ data: { followerId, followingId } });
+    this.followEvents.followed(followerId, followingId);
   }
 
   async unfollow(followerId: string, followingId: string): Promise<void> {
@@ -106,6 +161,34 @@ export class UsersService {
       .catch(() => {
         throw new NotFoundException('No sigues a este usuario');
       });
+    this.followEvents.unfollowed(followerId, followingId);
+  }
+
+  // Búsqueda por nombre, apellido o @username. Con varias palabras ("carlos
+  // inf") cada una debe aparecer en alguno de los tres campos.
+  async search(query: string, limit = 10): Promise<FollowerItemDto[]> {
+    const words = query
+      .trim()
+      .replace(/^@/, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 0)
+      .slice(0, 4);
+    if (words.length === 0) return [];
+
+    const profiles = await this.prisma.userProfile.findMany({
+      where: {
+        AND: words.map((w) => ({
+          OR: [
+            { username: { contains: w.toLowerCase() } },
+            { firstName: { contains: w, mode: 'insensitive' as const } },
+            { lastName: { contains: w, mode: 'insensitive' as const } },
+          ],
+        })),
+      },
+      orderBy: { username: 'asc' },
+      take: Math.min(Math.max(limit, 1), 20),
+    });
+    return profiles.map((p) => this.toFollowerItem(p));
   }
 
   async getFollowers(userId: string): Promise<FollowerItemDto[]> {
@@ -150,6 +233,7 @@ export class UsersService {
       lastName: string;
       bio: string | null;
       avatarUrl: string | null;
+      coverUrl: string | null;
     },
     followersCount: number,
     followingCount: number,
@@ -161,6 +245,7 @@ export class UsersService {
       lastName: profile.lastName,
       bio: profile.bio,
       avatarUrl: profile.avatarUrl,
+      coverUrl: profile.coverUrl,
       followersCount,
       followingCount,
     };

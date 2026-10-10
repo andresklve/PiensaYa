@@ -9,6 +9,18 @@ export class ListPostsQueryDto {
   @IsString()
   authorId?: string;
 
+  @ApiPropertyOptional({
+    description: 'Excluye las publicaciones de este autor (p. ej. las propias en "Para ti")',
+  })
+  @IsOptional()
+  @IsString()
+  excludeAuthorId?: string;
+
+  @ApiPropertyOptional({ description: 'Solo publicaciones con este hashtag (con o sin #)' })
+  @IsOptional()
+  @IsString()
+  tag?: string;
+
   @ApiPropertyOptional({ enum: PostType })
   @IsOptional()
   @IsEnum(PostType)

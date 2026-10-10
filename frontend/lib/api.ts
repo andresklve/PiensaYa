@@ -2,10 +2,15 @@ import { clearSession, getSession, saveSession } from './session';
 import {
   AuthResponse,
   Comment,
+  CommentWithContext,
   Conversation,
   FeedPage,
   FollowerItem,
+  ForYouItem,
   Me,
+  SearchResult,
+  TagCount,
+  OwnPostActivity,
   Message,
   PaginatedPosts,
   Post,
@@ -43,7 +48,7 @@ async function parseError(res: Response): Promise<never> {
   throw new ApiError(res.status, message);
 }
 
-async function refreshTokens(): Promise<string | null> {
+export async function refreshTokens(): Promise<string | null> {
   const session = getSession();
   if (!session) return null;
 
@@ -106,6 +111,46 @@ async function request<T>(
   return (text ? JSON.parse(text) : undefined) as T;
 }
 
+export type ImageKind = 'avatar' | 'cover';
+
+// fetch no informa progreso de subida; XMLHttpRequest sí. Si el token expiró
+// se renueva y se reintenta una vez, igual que request().
+function uploadImage(kind: ImageKind, file: Blob, onProgress?: (fraction: number) => void): Promise<Profile> {
+  const send = (token?: string) =>
+    new Promise<{ status: number; body: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${SERVICES.users}/users/me/${kind}`);
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      xhr.upload.onprogress = (e) => e.lengthComputable && onProgress?.(e.loaded / e.total);
+      xhr.onload = () => resolve({ status: xhr.status, body: xhr.responseText });
+      xhr.onerror = () => reject(new ApiError(0, 'No se pudo conectar con el servidor'));
+      const form = new FormData();
+      form.append('file', file, kind === 'avatar' ? 'avatar.jpg' : 'portada.jpg');
+      xhr.send(form);
+    });
+
+  return (async () => {
+    let res = await send(getSession()?.accessToken);
+    if (res.status === 401) {
+      const fresh = await refreshTokens();
+      if (!fresh) throw new ApiError(401, 'Tu sesión expiró. Vuelve a iniciar sesión.');
+      res = await send(fresh);
+    }
+    if (res.status === 413) throw new ApiError(413, 'La imagen no puede superar los 5 MB');
+    let body: unknown;
+    try {
+      body = JSON.parse(res.body);
+    } catch {
+      body = null;
+    }
+    if (res.status < 200 || res.status >= 300) {
+      const raw = (body as { message?: unknown } | null)?.message ?? `Error ${res.status}`;
+      throw new ApiError(res.status, Array.isArray(raw) ? raw.join('. ') : String(raw));
+    }
+    return body as Profile;
+  })();
+}
+
 export const api = {
   auth: {
     register: (body: {
@@ -143,12 +188,12 @@ export const api = {
       request<Profile>(SERVICES.users, `/users/by-username/${username}`, {
         auth: false,
       }),
-    updateMe: (body: {
-      firstName?: string;
-      lastName?: string;
-      bio?: string;
-      avatarUrl?: string;
-    }) => request<Profile>(SERVICES.users, '/users/me', { method: 'PATCH', body }),
+    updateMe: (body: { firstName?: string; lastName?: string; bio?: string }) =>
+      request<Profile>(SERVICES.users, '/users/me', { method: 'PATCH', body }),
+    uploadImage: (kind: ImageKind, file: Blob, onProgress?: (fraction: number) => void) =>
+      uploadImage(kind, file, onProgress),
+    removeImage: (kind: ImageKind) =>
+      request<Profile>(SERVICES.users, `/users/me/${kind}`, { method: 'DELETE' }),
     follow: (userId: string) =>
       request<void>(SERVICES.users, `/users/${userId}/follow`, {
         method: 'POST',
@@ -157,6 +202,8 @@ export const api = {
       request<void>(SERVICES.users, `/users/${userId}/follow`, {
         method: 'DELETE',
       }),
+    search: (q: string, limit = 8) =>
+      request<FollowerItem[]>(SERVICES.users, '/users/search', { auth: false, query: { q, limit } }),
     followers: (userId: string) =>
       request<FollowerItem[]>(SERVICES.users, `/users/${userId}/followers`, {
         auth: false,
@@ -170,13 +217,33 @@ export const api = {
   posts: {
     create: (body: { type: PostType; title?: string; content: string }) =>
       request<Post>(SERVICES.posts, '/posts', { method: 'POST', body }),
-    list: (query?: { authorId?: string; type?: PostType; page?: number; limit?: number }) =>
+    list: (query?: {
+      authorId?: string;
+      excludeAuthorId?: string;
+      tag?: string;
+      type?: PostType;
+      page?: number;
+      limit?: number;
+    }) =>
       request<PaginatedPosts>(SERVICES.posts, '/posts', {
         auth: false,
         query,
       }),
     byId: (id: string) =>
       request<Post>(SERVICES.posts, `/posts/${id}`, { auth: false }),
+    batch: (ids: string[]) =>
+      ids.length
+        ? request<Post[]>(SERVICES.posts, '/posts/batch', { auth: false, query: { ids: ids.join(',') } })
+        : Promise.resolve([] as Post[]),
+    search: (query: { q: string; excludeAuthorId?: string; type?: PostType; limit?: number }) =>
+      request<SearchResult>(SERVICES.posts, '/posts/search', { auth: false, query }),
+    myActivity: () => request<OwnPostActivity[]>(SERVICES.posts, '/posts/activity/mine'),
+    markSeen: (id: string) => request<void>(SERVICES.posts, `/posts/${id}/seen`, { method: 'POST' }),
+    commentsByAuthor: (authorId: string, limit = 30) =>
+      request<CommentWithContext[]>(SERVICES.posts, `/posts/comments/by-author/${authorId}`, {
+        auth: false,
+        query: { limit },
+      }),
     update: (id: string, body: { title?: string; content?: string }) =>
       request<Post>(SERVICES.posts, `/posts/${id}`, { method: 'PATCH', body }),
     remove: (id: string) =>
@@ -205,9 +272,16 @@ export const api = {
       }),
   },
 
+  hashtags: {
+    suggest: (q: string, limit = 8) =>
+      request<TagCount[]>(SERVICES.posts, '/hashtags/suggest', { auth: false, query: { q, limit } }),
+  },
+
   feed: {
     mine: (query?: { page?: number; limit?: number }) =>
       request<FeedPage>(SERVICES.feed, '/feed', { query }),
+    forYou: (query?: { type?: PostType; limit?: number }) =>
+      request<{ items: ForYouItem[] }>(SERVICES.feed, '/feed/for-you', { query }),
   },
 
   chat: {

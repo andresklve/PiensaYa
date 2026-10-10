@@ -7,6 +7,7 @@ import { Post, PostSchema } from './schemas/post.schema';
 import { Comment, CommentSchema } from './schemas/comment.schema';
 import { Reaction, ReactionSchema } from './schemas/reaction.schema';
 import { PostsController } from './posts.controller';
+import { HashtagsController } from './hashtags.controller';
 import { PostsService } from './posts.service';
 import { PostEventsPublisher } from './events/post-events.publisher';
 import { FEED_CLIENT } from './events/post-events';
@@ -36,7 +37,7 @@ import { JwtStrategy } from './strategies/jwt.strategy';
       },
     ]),
   ],
-  controllers: [PostsController],
+  controllers: [PostsController, HashtagsController],
   providers: [PostsService, PostEventsPublisher, JwtStrategy],
 })
 export class PostsModule {}

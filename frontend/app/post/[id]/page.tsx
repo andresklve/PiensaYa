@@ -1,9 +1,10 @@
 import { Suspense } from 'react';
+import { Spinner } from '@/components/ui';
 import PostDetail from './post-detail';
 
 export default function PostPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-gray-500">Cargando...</p>}>
+    <Suspense fallback={<Spinner />}>
       <PostDetail />
     </Suspense>
   );

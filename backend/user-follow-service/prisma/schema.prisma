@@ -14,6 +14,7 @@ model UserProfile {
   lastName  String
   bio       String?
   avatarUrl String?
+  coverUrl  String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

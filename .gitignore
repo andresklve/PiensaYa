@@ -1,0 +1,5 @@
+# Archivos locales que no van al repo
+.DS_Store
+logs/
+start-all.out
+backend/node_modules/
