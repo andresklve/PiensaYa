@@ -1,6 +1,6 @@
 # PiensaYa — Estado del proyecto
 
-Última actualización: 10 de octubre, 2026 (diseño Cuaderno, opiniones, imágenes de perfil, TanStack Query)
+Última actualización: 10 de octubre, 2026 (PR #8 mergeado: diseño Cuaderno, hashtags, feed "Para ti", imágenes de perfil; limpieza del repo)
 
 ## Qué es
 
@@ -126,7 +126,7 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 9. ✅ Infraestructura local con Docker Compose (Mongo, Redis, RabbitMQ, S3Mock para imágenes) + 2 bases PostgreSQL
 10. ✅ **Frontend Next.js** iniciado y conectado a los 5 servicios — mergeado a `main`
 11. ✅ Setup local completo documentado y probado end-to-end (registro → login → JWT compartido → perfil creado vía token interno, los 6 servicios corriendo a la vez) — ver sección "Cómo correr en local"
-12. ✅ **Rediseño del frontend** completo (Social Monochrome, claro/oscuro, animaciones con framer-motion, layout de 3 columnas) en las 8 páginas — pendiente de commit/PR (`feature/frontend-redesign` sugerida)
+12. ✅ Primer rediseño "Social Monochrome" (estilo X/Threads) — descartado después por parecer un clon de Twitter; reemplazado por "Cuaderno" (punto 14)
 13. ✅ Bug de build corregido: `tsconfig.build.tsbuildinfo` (caché incremental de TypeScript) sobrevivía al borrado de `dist/` por `deleteOutDir: true`, así que `nest build` terminaba con exit 0 sin generar `dist/main.js` en el segundo arranque. Solución: se quitó `incremental` de los 5 `tsconfig.json` y `start-all.sh` borra `*.tsbuildinfo` antes de compilar y falla con mensaje claro si falta `dist/main.js`
 
 14. ✅ **Rediseño "Cuaderno"** aplicado en todas las páginas (reemplaza "Social Monochrome", que se parecía demasiado a X)
@@ -140,6 +140,19 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 21. ✅ **Paso 3 — pestaña Comentarios en el perfil**: `GET /posts/comments/by-author/:authorId` devuelve cada comentario con la publicación comentada como contexto
 
 22. ✅ **Hashtags y buscador unificado**: el Post Service extrae los `#hashtags` del título y el texto al publicar/editar y los guarda **normalizados** (minúsculas, sin tildes: `#Cálculo2` = `#calculo2`) en `posts.tags` (las publicaciones previas se indexan solas al arrancar). `GET /hashtags/suggest` (autocompletar: primero los que empiezan con lo escrito, luego los más usados), `GET /posts?tag=` y `GET /posts/search?q=` (hashtags que contienen la palabra + publicaciones con esos hashtags o la palabra en título/texto, sin importar tildes). User & Follow Service: `GET /users/search?q=` (nombre, apellido o @usuario). Frontend: autocompletado al escribir `#` en el composer (teclado y mouse, opción "Crear nuevo"), hashtags como enlaces, página de tema `/explorar?tag=`, Explorar como buscador de temas + personas + publicaciones, "Temas populares" en el panel derecho
+
+23. ✅ **Foco de los campos de texto**: la regla global `:focus-visible` pasó a `@layer base` y excluye los campos de texto (cada uno marca el foco en su borde o en su contenedor), así no hay dos indicadores a la vez
+24. ✅ **PR #8 mergeado a `main`** (6 commits: chore, post-service, user-follow-service, feed-service, frontend, docs)
+25. ✅ **Limpieza del repo**: se quitó la coautoría de Claude de los commits (historial reescrito con force-push), los 28 commits quedaron con el correo `droupandres@gmail.com` (vinculados a la cuenta `andresklve`) y se borraron las ramas ya mergeadas: hoy el repo solo tiene `main`
+
+## Flujo de trabajo con git
+
+- Todo el código vive en `main`. Para cada cambio: rama nueva desde `main` (`feature/<tema>`), PR y merge; después se borra la rama
+- El repo tiene configurado `user.email = droupandres@gmail.com` para que los commits se vinculen a la cuenta de GitHub (la config global de la Mac no tiene correo)
+- Los commits y PRs **no** llevan líneas de coautoría ni "Generated with" de herramientas de IA
+- `gh` (GitHub CLI) está instalado y autenticado como `andresklve`, así que los PRs se pueden abrir desde la terminal (`gh pr create`)
+- `main` **no** tiene protección de rama activada en GitHub (el flujo con PR es por convención). Recomendado: activar "Automatically delete head branches" en Settings → General
+- Nota: la barra lateral "Contributors" de GitHub puede seguir mostrando a @claude un tiempo por caché (GitHub guarda los commits originales del PR #8). Si no desaparece, solo GitHub Support puede borrar esas referencias
 
 ## Cómo correr en local
 
@@ -165,7 +178,7 @@ También se agregó `pnpm-workspace.yaml` en auth-service, user-follow-service, 
 
 ## Próximos pasos
 
-- Commitear en una rama (`feature/frontend-redesign`) y abrir PR: rediseño Cuaderno, opiniones, imágenes de perfil, TanStack Query y fix de `tsbuildinfo` (hoy todo está sin commitear en `main`)
+- Revisar en GitHub (en uno o dos días) que @claude ya no aparezca en "Contributors"; si sigue, escribir a GitHub Support
 - Persistir la reacción del usuario en el backend (hoy solo se guarda en localStorage) y añadir endpoint de sugerencias de usuarios
 - Implementar Google OAuth (desde el frontend)
 - Evaluar cuándo abordar AWS/infra vs. seguir cerrando huecos del backend (paginación, búsqueda, rate limiting)
