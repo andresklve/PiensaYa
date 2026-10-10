@@ -15,6 +15,7 @@ import {
 import {
   ApiBearerAuth,
   ApiOperation,
+  ApiQuery,
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -27,6 +28,8 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { ReactDto } from './dto/react.dto';
 import { PaginatedPostsDto, PostResponseDto } from './dto/post-response.dto';
 import { CommentResponseDto } from './dto/comment-response.dto';
+import { CommentWithContextDto, OwnPostActivityDto } from './dto/activity.dto';
+import { SearchQueryDto, SearchResultDto } from './dto/search.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 
@@ -38,9 +41,9 @@ export class PostsController {
   @Post()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Publicar un artículo (POST) o un tweet (TWEET)' })
+  @ApiOperation({ summary: 'Publicar un artículo (POST), un apunte (TWEET) o una opinión (OPINION)' })
   @ApiResponse({ status: 201, type: PostResponseDto })
-  @ApiResponse({ status: 400, description: 'Tweet > 280 caracteres o artículo sin título' })
+  @ApiResponse({ status: 400, description: 'Apunte > 280, opinión > 600 caracteres o artículo sin título' })
   create(
     @CurrentUser() user: AuthUser,
     @Body() dto: CreatePostDto,
@@ -53,6 +56,56 @@ export class PostsController {
   @ApiResponse({ status: 200, type: PaginatedPostsDto })
   list(@Query() query: ListPostsQueryDto): Promise<PaginatedPostsDto> {
     return this.postsService.list(query);
+  }
+
+  @Get('search')
+  @ApiOperation({
+    summary: 'Buscar por tema: hashtags que coinciden y publicaciones con esos hashtags o la palabra en el texto',
+  })
+  @ApiResponse({ status: 200, type: SearchResultDto })
+  search(@Query() query: SearchQueryDto): Promise<SearchResultDto> {
+    return this.postsService.search(query);
+  }
+
+  @Get('batch')
+  @ApiOperation({ summary: 'Obtener varias publicaciones por id (máx. 50), en el orden pedido' })
+  @ApiQuery({ name: 'ids', description: 'Ids separados por coma' })
+  @ApiResponse({ status: 200, type: [PostResponseDto] })
+  batch(@Query('ids') ids = ''): Promise<PostResponseDto[]> {
+    return this.postsService.findMany(ids.split(',').map((id) => id.trim()).filter(Boolean));
+  }
+
+  @Get('activity/mine')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Publicaciones propias con comentarios o reacciones de otras personas que aún no viste',
+  })
+  @ApiResponse({ status: 200, type: [OwnPostActivityDto] })
+  myActivity(@CurrentUser() user: AuthUser): Promise<OwnPostActivityDto[]> {
+    return this.postsService.ownActivity(user.userId);
+  }
+
+  @Get('comments/by-author/:authorId')
+  @ApiOperation({ summary: 'Comentarios de una persona, con la publicación comentada como contexto' })
+  @ApiQuery({ name: 'limit', required: false })
+  @ApiResponse({ status: 200, type: [CommentWithContextDto] })
+  commentsByAuthor(
+    @Param('authorId') authorId: string,
+    @Query('limit') limit?: string,
+  ): Promise<CommentWithContextDto[]> {
+    return this.postsService.commentsByAuthor(authorId, limit ? Number(limit) || 30 : 30);
+  }
+
+  @Post(':id/seen')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Marcar como vista la actividad actual de una publicación propia' })
+  @ApiResponse({ status: 204 })
+  @ApiResponse({ status: 403, description: 'No eres el autor' })
+  markSeen(@CurrentUser() user: AuthUser, @Param('id') id: string): Promise<void> {
+    return this.postsService.markSeen(user, id);
   }
 
   @Get(':id')
