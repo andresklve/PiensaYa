@@ -35,8 +35,62 @@ jobs:
         if: hashFiles(format('backend/{0}/prisma/schema.prisma', matrix.service)) != ''
         run: pnpm exec prisma generate
       - run: pnpm run lint
+      - name: Type check (incluye tests)
+        run: pnpm exec tsc --noEmit
       - run: pnpm run build
       - run: pnpm test
+
+  # Los 5 servicios reales + Postgres, Mongo, Redis, RabbitMQ y S3Mock en Docker,
+  # contra la suite de e2e/ (registro → follow → post → feed → chat).
+  e2e:
+    needs: backend
+    runs-on: ubuntu-latest
+    env:
+      THROTTLE_DISABLED: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.29.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: backend/*/pnpm-lock.yaml
+      - name: Infraestructura (Docker Compose)
+        run: docker compose -f backend/docker-compose.yml up -d --wait
+      - name: Instalar, migrar y compilar los servicios
+        run: |
+          for svc in auth-service user-follow-service post-service chat-service feed-service; do
+            cd "backend/$svc"
+            cp .env.example .env
+            pnpm install --frozen-lockfile
+            if [ -f prisma/schema.prisma ]; then
+              pnpm exec prisma generate
+              pnpm exec prisma migrate deploy
+            fi
+            pnpm exec nest build
+            cd - > /dev/null
+          done
+      - name: Levantar los servicios
+        run: |
+          mkdir -p logs
+          for svc in auth-service user-follow-service post-service chat-service feed-service; do
+            (cd "backend/$svc" && nohup node dist/main.js > "../../logs/$svc.log" 2>&1 &)
+          done
+          for port in 3000 3001 3002 3003 3004; do
+            for i in $(seq 1 60); do
+              code=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost:$port/" || true)
+              [ "$code" != "000" ] && break
+              sleep 1
+            done
+            [ "$code" != "000" ] || { echo "El puerto $port no respondió"; exit 1; }
+          done
+      - name: Tests e2e
+        run: node --test "e2e/*.test.mjs"
+      - name: Logs de los servicios
+        if: failure()
+        run: tail -n 80 logs/*.log
 
   frontend:
     runs-on: ubuntu-latest
