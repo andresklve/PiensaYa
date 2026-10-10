@@ -10,13 +10,25 @@ Es un proyecto de portafolio personal para explorar **arquitectura de microservi
 
 ## Contenido
 
+- [Capturas](#capturas)
 - [Funcionalidades](#funcionalidades)
 - [Arquitectura](#arquitectura)
 - [Stack técnico](#stack-técnico)
 - [Decisiones de diseño](#decisiones-de-diseño)
 - [Cómo correrlo en local](#cómo-correrlo-en-local)
+- [Despliegue](#despliegue)
 - [Testing y CI](#testing-y-ci)
 - [Estructura del repositorio](#estructura-del-repositorio)
+
+---
+
+## Capturas
+
+| Feed «Para ti» | Mensajes: solicitudes | Conversación |
+|---|---|---|
+| ![Feed](docs/screenshots/feed.jpg) | ![Solicitudes de mensaje](docs/screenshots/solicitudes.jpg) | ![Conversación](docs/screenshots/chat.jpg) |
+
+> Capturas del stack de producción corriendo en local, con los datos de demostración de `scripts/seed.mjs`.
 
 ---
 
@@ -177,6 +189,16 @@ Cuando termina, queda disponible:
 
 > PostgreSQL se expone en el puerto **5433**, para no chocar con un Postgres instalado en la máquina.
 
+### Datos de demostración
+
+Con los servicios corriendo, carga usuarios, publicaciones, comentarios, reacciones y conversaciones de ejemplo (así la app no se ve vacía):
+
+```bash
+node scripts/seed.mjs
+```
+
+Después entra con la cuenta **`demo`** / **`Demo12345`**. El script es idempotente y respeta el rate limiting (espera unos dos minutos); si arrancas los servicios con `THROTTLE_DISABLED=true` es inmediato.
+
 ### Desarrollo de un solo servicio
 
 Para trabajar con hot-reload en un servicio puntual:
@@ -198,6 +220,25 @@ Cada servicio tiene su `.env.example` documentado. Hay tres reglas importantes:
 
 ---
 
+## Despliegue
+
+El repositorio incluye todo lo necesario para publicarlo en **cualquier servidor con Docker** (`deploy/`):
+
+- **Imágenes de producción:** un `Dockerfile` compartido para los cinco servicios (`backend/Dockerfile`, multi-stage, sin root, con migraciones de Prisma al arrancar) y otro para el frontend (Next.js `standalone`).
+- **`deploy/docker-compose.prod.yml`:** Caddy con HTTPS automático (Let's Encrypt) + los cinco servicios + frontend + PostgreSQL, MongoDB, Redis, RabbitMQ y almacenamiento S3. Solo se exponen los puertos 80 y 443; las bases de datos quedan en la red interna y todo lleva contraseña.
+- **Un solo dominio de API:** Caddy reparte por prefijo de ruta (`/auth`, `/users`, `/posts`, `/chat`, `/feed`) y también el WebSocket del chat.
+- **Configuración por entorno:** secretos aleatorios (`deploy/generate-secrets.sh`), CORS restringido al dominio de la app y rate limiting con la IP real detrás del proxy.
+
+```bash
+cd deploy
+cp .env.example .env && ./generate-secrets.sh >> .env   # y editar los dominios
+docker compose -f docker-compose.prod.yml up -d --build
+```
+
+Este stack de producción se probó completo en local (12 contenedores sanos y la suite e2e pasando a través de Caddy), y el CI construye todas las imágenes en cada push. Guía paso a paso, respaldos y lista de seguridad en [`deploy/DEPLOY.md`](deploy/DEPLOY.md).
+
+---
+
 ## Testing y CI
 
 ```bash
@@ -213,6 +254,7 @@ node --test "e2e/*.test.mjs"
 - **GitHub Actions** corre en cada push a `main` y en cada pull request:
   - Por servicio: lint → `tsc --noEmit` → build → tests.
   - **e2e**: levanta Docker Compose y los cinco servicios en el runner y ejecuta la suite.
+  - **Docker**: construye las imágenes de los cinco servicios y del frontend y valida `docker-compose.prod.yml`.
   - Frontend: lint → type check → `next build`.
 
 ---
@@ -228,9 +270,13 @@ PiensaYa/
 │   ├── chat-service/          # NestJS + Mongoose + Socket.IO + Redis
 │   ├── feed-service/          # NestJS + RabbitMQ + Redis
 │   ├── docker/                # Init de PostgreSQL
-│   └── docker-compose.yml     # Infraestructura local
-├── frontend/                  # Next.js 16 + React 19
+│   ├── docker-compose.yml     # Infraestructura local (desarrollo)
+│   └── Dockerfile             # Imagen de producción de cualquier servicio
+├── frontend/                  # Next.js 16 + React 19 (+ Dockerfile)
+├── deploy/                    # Stack de producción: compose, Caddy y guía
 ├── e2e/                       # Tests end-to-end entre servicios
+├── scripts/seed.mjs           # Datos de demostración
+├── docs/screenshots/          # Capturas del README
 ├── .github/workflows/ci.yml   # Integración continua
 └── start-all.sh               # Levanta todo el entorno local
 ```

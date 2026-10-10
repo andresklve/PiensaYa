@@ -1,6 +1,6 @@
 # PiensaYa — Estado del proyecto
 
-Última actualización: 10 de octubre, 2026 (Mejoras de chat, sugerencias, paginación, rate limiting, tests e2e y fix de carrera en el feed; antes: Contactos / Solicitudes, Postgres en Docker + `.env.example`, reacción propia persistida, CI con GitHub Actions, configuración de la laptop Windows)
+Última actualización: 10 de octubre, 2026 (Stack de producción preparado y probado en local, script de datos de demostración, README con capturas; el despliegue real queda pendiente a propósito)
 
 ## Qué es
 
@@ -158,6 +158,9 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 35. ✅ **Rate limiting** con `@nestjs/throttler` (por IP, solo rutas sensibles): login 10/min, registro 5/min, refresh 30/min, cambio de contraseña 5/min, publicar 10/min, comentar 20/min, reaccionar 60/min, mensajes 30/min (también por WebSocket, por usuario). `THROTTLE_DISABLED=true` lo apaga. El frontend traduce el 429
 36. ✅ **Tests e2e + job en CI** (ver "Testing"). Encontraron un bug real: si un post se borraba justo después de publicarse, `post_deleted` se procesaba antes que `post_created` y el post reaparecía en los feeds → arreglado con la lápida
 37. ✅ **Tooling**: `.gitattributes` (LF en Mac y Windows) y `tsc --noEmit` limpio en los 5 servicios (`rootDir: "."` en `tsconfig.json`; el build sigue usando `./src` desde `tsconfig.build.json`), ahora también en CI
+38. ✅ **Preparado para desplegar (sin desplegar todavía)**: `backend/Dockerfile` (uno para los 5 servicios, multi-stage, usuario sin root, migraciones de Prisma al arrancar), `frontend/Dockerfile` (Next `standalone`; las `NEXT_PUBLIC_*` son argumentos de build) y la carpeta `deploy/`: `docker-compose.prod.yml` (Caddy con HTTPS automático + 5 servicios + frontend + Postgres/Mongo/Redis/RabbitMQ con contraseña + S3Mock; solo 80/443 expuestos), `Caddyfile` (un solo dominio de API repartido por prefijo de ruta, incluido el WebSocket), `.env.example`, `generate-secrets.sh` y `DEPLOY.md`. Cambios en los servicios: `CORS_ORIGIN` (lista de orígenes permitidos) y `TRUST_PROXY=true` (IP real detrás de Caddy, para que el rate limiting no junte a todos los usuarios). **Probado en local**: 12 contenedores sanos, migraciones aplicadas solas, suite e2e 12/12 pasando a través de Caddy; el stack completo usa ~1,1 GB de RAM en reposo. El CI construye las 6 imágenes y valida el compose en cada push
+39. ✅ **`scripts/seed.mjs`**: datos de demostración vía la API real (9 usuarios, 15 relaciones de seguimiento, 15 publicaciones de los 3 formatos, 15 comentarios, 45 reacciones y 10 mensajes, con contactos y solicitudes). Idempotente y tolera el rate limiting (espera lo que pida el servidor). Cuenta de prueba: `demo` / `Demo12345`
+40. ✅ **README con capturas** (`docs/screenshots/`), sección de despliegue, datos de demostración y estructura actualizada
 
 ## Flujo de trabajo con git
 
@@ -219,8 +222,9 @@ Configurado el 10 de octubre, 2026. Todo corre y fue verificado (los 5 servicios
 ## Próximos pasos
 
 - Revisar en GitHub (en uno o dos días) que @claude ya no aparezca en "Contributors"; si sigue, escribir a GitHub Support
-- Terminar el diagrama de arquitectura y el README (pendiente a propósito)
-- Desplegar (AWS u otro) para tener demo en línea (pendiente a propósito, después del diagrama)
-- Rate limiting en el User & Follow Service (seguir, subir imágenes) y por usuario en vez de por IP detrás de un proxy
+- **Desplegar en un servidor real** (decisión: se hará más adelante, al buscar trabajo, con un VPS de pago). Ya está todo preparado y probado en local: `deploy/DEPLOY.md` es la guía. Lo que queda es crear el servidor, apuntar el dominio, correr `docker compose up` y `scripts/seed.mjs`; después, poner el enlace de la demo arriba del README y en la descripción del repo, y fijar el repo en el perfil de GitHub
+- Diagrama de arquitectura aparte (hoy el README tiene uno en Mermaid)
+- Pasar las imágenes de perfil de S3Mock a un bucket real (S3 o R2) al desplegar
+- Rate limiting en el User & Follow Service (seguir, subir imágenes) y por usuario en vez de por IP
 - Implementar Google OAuth (desde el frontend)
 - Considerar bajar `deleteOutDir` a `false` en los 5 `nest-cli.json` para eliminar la carrera de compilación de raíz, en vez de depender de que `start-all.sh` compile en serie
