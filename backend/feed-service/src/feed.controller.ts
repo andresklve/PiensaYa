@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -24,8 +24,12 @@ export class FeedController {
       'Para ti: 3 de quienes sigo por cada 1 de descubrimiento (por interacción y recencia), sin publicaciones propias',
   })
   @ApiResponse({ status: 200, type: ForYouDto })
-  getForYou(@CurrentUser() user: AuthUser, @Query() query: ForYouQueryDto): Promise<ForYouDto> {
-    return this.feedService.forYou(user.userId, query.type, query.limit);
+  getForYou(
+    @CurrentUser() user: AuthUser,
+    @Query() query: ForYouQueryDto,
+    @Headers('authorization') authorization: string,
+  ): Promise<ForYouDto> {
+    return this.feedService.forYou(user.userId, query.type, query.limit, authorization);
   }
 
   @Get()

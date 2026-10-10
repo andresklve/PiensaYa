@@ -194,7 +194,7 @@ describe('FeedService', () => {
 
       const { items } = await service.forYou('yo', undefined, 30);
 
-      expect(postsClient.list).toHaveBeenCalledWith(expect.objectContaining({ excludeAuthorId: 'yo' }));
+      expect(postsClient.list).toHaveBeenCalledWith(expect.objectContaining({ excludeAuthorId: 'yo' }), undefined);
       expect(items.map((i) => [i.id, i.reason])).toEqual([['d1', 'discovery']]);
     });
 
@@ -230,7 +230,18 @@ describe('FeedService', () => {
 
       await service.forYou('yo', 'POST', 30);
 
-      expect(postsClient.batch).toHaveBeenCalledWith(['art']);
+      expect(postsClient.batch).toHaveBeenCalledWith(['art'], undefined);
+    });
+
+    it('reenvía el token del usuario al Post Service para traer su reacción', async () => {
+      usersClient.getFollowingIds.mockResolvedValue(['amiga']);
+      redis.lrange.mockResolvedValue(['art']);
+      redis.mget.mockResolvedValue([snapshot('art', 'amiga', '2026-01-02T00:00:00.000Z')]);
+
+      await service.forYou('yo', undefined, 30, 'Bearer abc');
+
+      expect(postsClient.batch).toHaveBeenCalledWith(['art'], 'Bearer abc');
+      expect(postsClient.list).toHaveBeenCalledWith(expect.any(Object), 'Bearer abc');
     });
   });
 

@@ -83,6 +83,8 @@ export class ForYouItemDto {
   @ApiPropertyOptional({ type: [String] }) tags?: string[];
   @ApiProperty() commentsCount: number;
   @ApiProperty({ type: Object }) reactions: Record<string, number>;
+  @ApiPropertyOptional({ nullable: true, description: 'Tu reacción (la calcula el Post Service)' })
+  myReaction?: string | null;
   @ApiProperty() createdAt: string;
   @ApiProperty() updatedAt: string;
 
