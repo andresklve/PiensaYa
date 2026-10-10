@@ -31,7 +31,8 @@ import { CommentResponseDto } from './dto/comment-response.dto';
 import { CommentWithContextDto, OwnPostActivityDto } from './dto/activity.dto';
 import { SearchQueryDto, SearchResultDto } from './dto/search.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
-import { CurrentUser } from './decorators/current-user.decorator';
+import { OptionalJwtAuthGuard } from './guards/optional-jwt-auth.guard';
+import { CurrentUser, ViewerId } from './decorators/current-user.decorator';
 
 @ApiTags('posts')
 @Controller('posts')
@@ -52,27 +53,36 @@ export class PostsController {
   }
 
   @Get()
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Listar publicaciones (paginado, filtrable por autor y tipo)' })
   @ApiResponse({ status: 200, type: PaginatedPostsDto })
-  list(@Query() query: ListPostsQueryDto): Promise<PaginatedPostsDto> {
-    return this.postsService.list(query);
+  list(@Query() query: ListPostsQueryDto, @ViewerId() viewerId?: string): Promise<PaginatedPostsDto> {
+    return this.postsService.list(query, viewerId);
   }
 
   @Get('search')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary: 'Buscar por tema: hashtags que coinciden y publicaciones con esos hashtags o la palabra en el texto',
   })
   @ApiResponse({ status: 200, type: SearchResultDto })
-  search(@Query() query: SearchQueryDto): Promise<SearchResultDto> {
-    return this.postsService.search(query);
+  search(@Query() query: SearchQueryDto, @ViewerId() viewerId?: string): Promise<SearchResultDto> {
+    return this.postsService.search(query, viewerId);
   }
 
   @Get('batch')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Obtener varias publicaciones por id (máx. 50), en el orden pedido' })
   @ApiQuery({ name: 'ids', description: 'Ids separados por coma' })
   @ApiResponse({ status: 200, type: [PostResponseDto] })
-  batch(@Query('ids') ids = ''): Promise<PostResponseDto[]> {
-    return this.postsService.findMany(ids.split(',').map((id) => id.trim()).filter(Boolean));
+  batch(@Query('ids') ids = '', @ViewerId() viewerId?: string): Promise<PostResponseDto[]> {
+    return this.postsService.findMany(
+      ids.split(',').map((id) => id.trim()).filter(Boolean),
+      viewerId,
+    );
   }
 
   @Get('activity/mine')
@@ -109,11 +119,13 @@ export class PostsController {
   }
 
   @Get(':id')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'Obtener una publicación' })
   @ApiResponse({ status: 200, type: PostResponseDto })
   @ApiResponse({ status: 404, description: 'Publicación no encontrada' })
-  findOne(@Param('id') id: string): Promise<PostResponseDto> {
-    return this.postsService.findOne(id);
+  findOne(@Param('id') id: string, @ViewerId() viewerId?: string): Promise<PostResponseDto> {
+    return this.postsService.findOne(id, viewerId);
   }
 
   @Patch(':id')

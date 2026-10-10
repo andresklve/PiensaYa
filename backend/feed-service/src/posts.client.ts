@@ -15,9 +15,13 @@ export interface PostView {
   tags?: string[];
   commentsCount: number;
   reactions: Record<string, number>;
+  myReaction?: string | null;
   createdAt: string;
   updatedAt: string;
 }
+
+const authHeaders = (authorization?: string) =>
+  authorization ? { Authorization: authorization } : undefined;
 
 interface PostPage {
   items: PostView[];
@@ -31,23 +35,33 @@ export class PostsClient {
     private readonly config: ConfigService,
   ) {}
 
-  async list(params: {
-    authorId?: string;
-    excludeAuthorId?: string;
-    type?: PostKind;
-    limit?: number;
-  }): Promise<PostView[]> {
+  // `authorization` es el header del usuario que pide el feed: se reenvía para
+  // que el Post Service incluya su reacción (myReaction) en cada publicación.
+  async list(
+    params: {
+      authorId?: string;
+      excludeAuthorId?: string;
+      type?: PostKind;
+      limit?: number;
+    },
+    authorization?: string,
+  ): Promise<PostView[]> {
     const { data } = await firstValueFrom(
-      this.http.get<PostPage>(`${this.baseUrl()}/posts`, { params, timeout: 5000 }),
+      this.http.get<PostPage>(`${this.baseUrl()}/posts`, {
+        params,
+        headers: authHeaders(authorization),
+        timeout: 5000,
+      }),
     );
     return data.items;
   }
 
-  async batch(ids: string[]): Promise<PostView[]> {
+  async batch(ids: string[], authorization?: string): Promise<PostView[]> {
     if (ids.length === 0) return [];
     const { data } = await firstValueFrom(
       this.http.get<PostView[]>(`${this.baseUrl()}/posts/batch`, {
         params: { ids: ids.join(',') },
+        headers: authHeaders(authorization),
         timeout: 5000,
       }),
     );

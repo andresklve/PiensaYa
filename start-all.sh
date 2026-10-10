@@ -1,14 +1,35 @@
 #!/usr/bin/env bash
 set -e
 cd "$(dirname "$0")"
-
-echo "Levantando Mongo, Redis y RabbitMQ..."
-docker compose -f backend/docker-compose.yml up -d
-
 mkdir -p logs
-PIDS=()
 
 BACKEND_SERVICES=(auth-service user-follow-service post-service chat-service feed-service)
+
+# Primera vez en una máquina: se crean los .env desde las plantillas. Los que
+# ya existen no se tocan (pueden apuntar a otro Postgres, p. ej. uno local).
+for name in "${BACKEND_SERVICES[@]}"; do
+  if [ ! -f "backend/$name/.env" ]; then
+    cp "backend/$name/.env.example" "backend/$name/.env"
+    echo "Creado backend/$name/.env desde .env.example"
+  fi
+done
+if [ ! -f frontend/.env.local ]; then
+  cp frontend/.env.example frontend/.env.local
+  echo "Creado frontend/.env.local desde .env.example"
+fi
+
+echo "Levantando Postgres, Mongo, Redis, RabbitMQ y S3Mock..."
+# --wait: espera a que Postgres pase su healthcheck antes de migrar.
+docker compose -f backend/docker-compose.yml up -d --wait
+
+for name in auth-service user-follow-service; do
+  echo "Aplicando migraciones de $name..."
+  if ! (cd "backend/$name" && pnpm exec prisma migrate deploy) > "logs/$name.migrate.log" 2>&1; then
+    echo "AVISO: falló prisma migrate deploy en $name (ver logs/$name.migrate.log)"
+  fi
+done
+
+PIDS=()
 
 # Compilamos uno por uno (no en paralelo). nest-cli borra dist/ de forma
 # asíncrona al compilar (deleteOutDir): si varios servicios compilan a la vez

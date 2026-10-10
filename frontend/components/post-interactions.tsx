@@ -15,7 +15,6 @@ import {
   Trash2,
   type LucideIcon,
 } from 'lucide-react';
-import { useMyReaction } from '@/lib/my-reactions';
 import { useAddComment, useComments, useProfiles, useReactMutation, useRemoveComment } from '@/lib/queries';
 import { Post, REACTIONS, ReactionType } from '@/lib/types';
 import { Avatar, Button, ErrorText, cx, timeAgo } from './ui';
@@ -98,9 +97,9 @@ export function ReactionBar({
   className?: string;
   trailing?: React.ReactNode;
 }) {
-  const mine = useMyReaction(currentUserId, post.id);
+  const mine = currentUserId ? (post.myReaction ?? null) : null;
   const [pickerOpen, setPickerOpen] = useState(false);
-  const react = useReactMutation(currentUserId);
+  const react = useReactMutation();
   const pickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {

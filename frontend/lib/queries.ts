@@ -9,7 +9,6 @@ import {
 } from '@tanstack/react-query';
 import { api, ImageKind } from './api';
 import { useAuth } from './auth-context';
-import { setMyReaction } from './my-reactions';
 import { getSession } from './session';
 import {
   Comment,
@@ -21,6 +20,7 @@ import {
   PostType,
   Profile,
   ReactionType,
+  SearchResult,
 } from './types';
 
 // ---------------------------------------------------------------------------
@@ -335,12 +335,12 @@ export function useCommentsByAuthor(authorId: string | undefined, enabled = true
   });
 }
 
-type PostCache = PaginatedPosts | Post[] | OwnPostActivity[] | Post | undefined;
+type PostCache = PaginatedPosts | Post[] | OwnPostActivity[] | SearchResult | Post | undefined;
 
 // Aplica un cambio a una publicación en todas las listas y en su detalle.
 export function patchPost(qc: QueryClient, postId: string, patch: (p: Post) => Post) {
   qc.setQueriesData<PostCache>(
-    { predicate: (q) => ['posts', 'feed', 'post', 'activity'].includes(q.queryKey[0] as string) },
+    { predicate: (q) => ['posts', 'feed', 'post', 'activity', 'search'].includes(q.queryKey[0] as string) },
     (old) => {
       if (!old) return old;
       if (Array.isArray(old)) {
@@ -350,6 +350,7 @@ export function patchPost(qc: QueryClient, postId: string, patch: (p: Post) => P
         }) as PostCache;
       }
       if ('items' in old) return { ...old, items: old.items.map((p) => (p.id === postId ? patch(p) : p)) };
+      if ('posts' in old) return { ...old, posts: old.posts.map((p) => (p.id === postId ? patch(p) : p)) };
       return old.id === postId ? patch(old) : old;
     },
   );
@@ -411,7 +412,7 @@ export function useDeletePost() {
 
 // Optimista: el conteo cambia al instante en todas las vistas del post y se
 // reconcilia con la respuesta; si falla, se revierte.
-export function useReactMutation(userId: string) {
+export function useReactMutation() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ post, type, mine }: { post: Post; type: ReactionType; mine: ReactionType | null }) => {
@@ -426,16 +427,15 @@ export function useReactMutation(userId: string) {
       const counts = { ...post.reactions };
       if (mine) counts[mine] = Math.max(0, (counts[mine] ?? 1) - 1);
       if (!removing) counts[type] = (counts[type] ?? 0) + 1;
-      setMyReaction(userId, post.id, removing ? null : type);
-      patchPost(qc, post.id, (p) => ({ ...p, reactions: counts }));
-      return { snapshot: post, mine };
+      patchPost(qc, post.id, (p) => ({ ...p, reactions: counts, myReaction: removing ? null : type }));
+      return { snapshot: post };
     },
     onError: (_e, { post }, ctx) => {
       if (!ctx) return;
-      setMyReaction(userId, post.id, ctx.mine);
       patchPost(qc, post.id, () => ctx.snapshot);
     },
-    onSuccess: (fresh) => patchPost(qc, fresh.id, (p) => ({ ...p, reactions: fresh.reactions })),
+    onSuccess: (fresh) =>
+      patchPost(qc, fresh.id, (p) => ({ ...p, reactions: fresh.reactions, myReaction: fresh.myReaction ?? null })),
   });
 }
 

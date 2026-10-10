@@ -1,4 +1,24 @@
 services:
+  # Postgres para Auth (piensaya_auth) y User & Follow (piensaya_users); las dos
+  # bases se crean solas la primera vez (docker/postgres/init.sql). Puerto 5433
+  # en el host para no chocar con un Postgres instalado localmente (5432).
+  postgres:
+    image: postgres:16-alpine
+    container_name: piensaya-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
   mongo:
     image: mongo:7
     container_name: piensaya-mongo
@@ -37,5 +57,6 @@ services:
       - s3-data:/data
 
 volumes:
+  postgres-data:
   mongo-data:
   s3-data:

@@ -1,6 +1,6 @@
 # PiensaYa — Estado del proyecto
 
-Última actualización: 10 de octubre, 2026 (PR #8 mergeado: diseño Cuaderno, hashtags, feed "Para ti", imágenes de perfil; limpieza del repo)
+Última actualización: 10 de octubre, 2026 (Postgres en Docker + `.env.example`, reacción propia persistida en el backend, CI con GitHub Actions; configuración de la laptop Windows)
 
 ## Qué es
 
@@ -71,7 +71,7 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 - Passport + JWT para autenticación (passport-jwt)
 - class-validator / class-transformer para DTOs
 - @nestjs/swagger para documentación de API (cada servicio expone `/docs`)
-- Docker Compose para levantar Mongo, Redis y RabbitMQ localmente (`backend/docker-compose.yml`)
+- Docker Compose para levantar Postgres, Mongo, Redis, RabbitMQ y S3Mock localmente (`backend/docker-compose.yml`)
 
 **Frontend**
 - Next.js 16 (App Router) + React 19 + Tailwind 4, conectado a los 5 servicios vía `NEXT_PUBLIC_*_URL` (`lib/api.ts`). Corre en el puerto 3100 (`pnpm dev` / `pnpm start`)
@@ -83,14 +83,15 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 - Páginas: `/` (portada), `/login`, `/registro`, `/feed` (tabs **Para ti** / **Siguiendo** + filtro Todo/Artículos/Apuntes/Opiniones), `/explorar`, `/perfil` y `/u/[username]` (portada y foto subidas como archivo, con recorte), `/post/[id]`, `/chat` y `/chat/[userId]`
 - **TanStack Query** como capa de datos (`lib/queries.ts`): caché por clave, mutaciones optimistas con rollback (seguir, reaccionar, publicar, comentar, borrar) e invalidación de todas las vistas afectadas. Seguir a alguien actualiza al instante botón, sugerencias, índice y contadores
 - Componentes base en `components/ui.tsx` (Button, Input, Avatar, PageHeader, etc.); reacciones y comentarios en `components/post-interactions.tsx`; íconos `lucide-react`
-- Limitación conocida: el backend solo devuelve conteos de reacciones, no la reacción del usuario actual; el frontend la recuerda en localStorage (`lib/my-reactions.ts`), así que no persiste entre navegadores
+- La reacción propia viene del backend (`myReaction` en cada publicación), así que se ve igual en cualquier navegador o dispositivo. Las lecturas públicas de posts mandan el token si hay sesión (`auth: 'optional'` en `lib/api.ts`)
 - Limitación conocida: no existe endpoint de sugerencias; "Compañeros por descubrir" propone autores recientes que aún no sigues
 - Tus propias publicaciones no aparecen en "Para ti" ni en Explorar; solo en el bloque **"Actividad en tus publicaciones"** cuando otra persona comentó o reaccionó y aún no lo viste (se marca visto en el servidor tras 1,5 s en pantalla o al abrirla; vuelve si llega actividad nueva)
 - Hay un hook `useMounted` (`lib/use-mounted.ts`) para evitar errores de hidratación en UI que depende de la sesión (localStorage)
 - Historial: se probó primero un estilo editorial "Minimalist Monochrome" (serif, esquinas rectas, titulares gigantes) y se descartó por poco práctico; se rehízo desde cero
 
 **Testing**
-- Jest, con tests unitarios por servicio (42 tests en total entre los 5)
+- Jest, con tests unitarios por servicio (81 tests en total entre los 5)
+- **CI con GitHub Actions** (`.github/workflows/ci.yml`): en cada push a `main` y en cada PR corre, por servicio, `install --frozen-lockfile` → `prisma generate` (si aplica) → lint (oxlint) → build → tests; y en el frontend lint (eslint) → `tsc --noEmit` → `next build`
 
 ## Decisiones de diseño tomadas
 
@@ -145,6 +146,10 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 24. ✅ **PR #8 mergeado a `main`** (6 commits: chore, post-service, user-follow-service, feed-service, frontend, docs)
 25. ✅ **Limpieza del repo**: se quitó la coautoría de Claude de los commits (historial reescrito con force-push), los 28 commits quedaron con el correo `droupandres@gmail.com` (vinculados a la cuenta `andresklve`) y se borraron las ramas ya mergeadas: hoy el repo solo tiene `main`
 
+26. ✅ **Setup reproducible**: Postgres 16 dentro de `docker-compose` (puerto **5433** en el host para no chocar con un Postgres local; crea `piensaya_auth` y `piensaya_users` solo, vía `backend/docker/postgres/init.sql`) y un `.env.example` por servicio + `frontend/.env.example`, con valores de desarrollo que ya funcionan juntos. `start-all.sh` copia los `.env` que falten, espera el healthcheck de Postgres (`up --wait`) y corre `prisma migrate deploy` en auth y user-follow
+27. ✅ **Reacción propia persistida**: el Post Service ya guardaba una reacción por usuario en Mongo, pero solo devolvía conteos. Ahora `GET /posts`, `/posts/:id`, `/posts/batch` y `/posts/search` aceptan token opcional (`OptionalJwtAuthGuard`: sin token = anónimo, token inválido = 401 para que el cliente lo renueve) y cada publicación trae `myReaction`. El Feed Service reenvía el header `Authorization` al hidratar "Para ti". El frontend lee `post.myReaction` y se borró `lib/my-reactions.ts` (localStorage)
+28. ✅ **CI con GitHub Actions**: 5 servicios en matriz + frontend (ver "Testing")
+
 ## Flujo de trabajo con git
 
 - Todo el código vive en `main`. Para cada cambio: rama nueva desde `main` (`feature/<tema>`), PR y merge; después se borra la rama
@@ -156,16 +161,21 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 
 ## Cómo correr en local
 
-1. Tener Postgres corriendo con las bases `piensaya_auth` y `piensaya_users` ya creadas.
-2. Crear `.env` en cada uno de los 5 servicios de `backend/` (están en `.gitignore`, no se suben). Variables que lee cada uno:
+**Camino rápido (máquina nueva)**: tener Docker abierto, `pnpm install` en cada servicio de `backend/` y en `frontend/`, y correr `./start-all.sh`. El script crea los `.env` desde los `.env.example`, levanta todo en Docker (incluido Postgres con sus dos bases), aplica las migraciones de Prisma y arranca los servicios. No hace falta instalar Postgres ni crear bases a mano.
+
+Detalle:
+
+1. Postgres: por defecto el del `docker-compose` (`localhost:5433`, usuario/contraseña `postgres`/`postgres`, bases creadas solas). Si prefieres un Postgres instalado en la máquina, apunta `AUTH_DATABASE_URL` / `USER_DATABASE_URL` a él y crea las dos bases.
+2. Cada servicio de `backend/` lee su `.env` (en `.gitignore`; la plantilla es `.env.example`). Variables que lee cada uno:
    - **auth-service**: `PORT`, `AUTH_DATABASE_URL`, `JWT_SECRET`, `JWT_ACCESS_EXPIRES_SECONDS`, `JWT_REFRESH_SECRET`, `JWT_REFRESH_EXPIRES_SECONDS`, `USER_SERVICE_URL`, `INTERNAL_SERVICE_TOKEN`
    - **user-follow-service**: `PORT`, `USER_DATABASE_URL`, `JWT_SECRET`, `INTERNAL_SERVICE_TOKEN`, `STORAGE_ENDPOINT` (`http://localhost:9090`), `STORAGE_BUCKET` (`piensaya-media`), `STORAGE_REGION`, `RABBITMQ_URL`, `RABBITMQ_FEED_QUEUE` (publica `user_followed` / `user_unfollowed`) (opcionales en AWS: `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY`, `STORAGE_PUBLIC_URL`)
    - **post-service**: `PORT`, `MONGO_URI`, `JWT_SECRET`, `RABBITMQ_URL`, `RABBITMQ_FEED_QUEUE`
    - **chat-service**: `PORT`, `MONGO_URI`, `JWT_SECRET`, `REDIS_URL`, `USER_SERVICE_URL`
    - **feed-service**: `PORT`, `JWT_SECRET`, `RABBITMQ_URL`, `RABBITMQ_FEED_QUEUE`, `REDIS_URL`, `USER_SERVICE_URL`, `POST_SERVICE_URL`, `FEED_MAX_LENGTH`
    - `JWT_SECRET` debe ser **idéntico** en los 5. `INTERNAL_SERVICE_TOKEN` debe ser idéntico entre auth y user-follow. `RABBITMQ_FEED_QUEUE` debe ser idéntico entre post, user-follow y feed.
-3. Crear `frontend/.env.local` con `NEXT_PUBLIC_AUTH_URL`, `NEXT_PUBLIC_USERS_URL`, `NEXT_PUBLIC_POSTS_URL`, `NEXT_PUBLIC_CHAT_URL`, `NEXT_PUBLIC_FEED_URL` (`http://localhost:3000` a `3004`) — si faltan, el frontend tira `Failed to construct 'URL': Invalid URL`.
-4. Correr `./start-all.sh` desde la raíz del repo: levanta Docker Compose (Mongo/Redis/RabbitMQ), compila los 5 servicios **en secuencia** (no en paralelo — ver nota abajo) y los arranca junto al frontend. Logs en `logs/<servicio>.log`. Ctrl+C detiene todo.
+3. `frontend/.env.local` (plantilla `frontend/.env.example`) con `NEXT_PUBLIC_AUTH_URL`, `NEXT_PUBLIC_USERS_URL`, `NEXT_PUBLIC_POSTS_URL`, `NEXT_PUBLIC_CHAT_URL`, `NEXT_PUBLIC_FEED_URL` (`http://localhost:3000` a `3004`) — si faltan, el frontend tira `Failed to construct 'URL': Invalid URL`.
+4. `./start-all.sh` desde la raíz del repo: copia los `.env` que falten (no toca los existentes), levanta Docker Compose y espera los healthchecks (`up --wait`), corre `prisma migrate deploy` en auth y user-follow (si falla solo avisa; ver `logs/<servicio>.migrate.log`), compila los 5 servicios **en secuencia** (no en paralelo — ver nota abajo) y los arranca junto al frontend. Logs en `logs/<servicio>.log`. Ctrl+C detiene todo.
+   - Si una base ya tenía tablas creadas con `prisma db push` (sin historial), `migrate deploy` falla con **P3005**: sincronizar con `pnpm exec prisma db push` y marcar cada migración con `pnpm exec prisma migrate resolve --applied <carpeta>`.
 5. Para desarrollo activo de un solo servicio con hot-reload, usar `pnpm start:dev` dentro de su carpeta (no usar `start-all.sh` para eso).
 
 **Nota de tooling**: `nest-cli.json` tiene `deleteOutDir: true` en los 5 servicios. Dos problemas relacionados, ambos resueltos en `start-all.sh`:
@@ -176,10 +186,34 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 
 También se agregó `pnpm-workspace.yaml` en auth-service, user-follow-service, post-service, chat-service y feed-service para dos políticas de seguridad nuevas de pnpm 12: `minimumReleaseAgeExclude` (paquetes transitivos muy recién publicados) y `allowBuilds` (scripts de instalación de paquetes nativos como Prisma/bcrypt/parcel-watcher).
 
+## Windows (laptop) — configuración específica de este equipo
+
+> **Si lees esto desde la Mac:** esta sección es solo para la laptop con Windows. El código es el mismo; lo que cambia es el entorno local (`.env` no se versionan). No copies estos valores a la Mac sin revisarlos.
+
+Configurado el 10 de octubre, 2026. Todo corre y fue verificado (los 5 servicios + frontend responden; registro y login probados de punta a punta).
+
+- **Postgres local (instalado en Windows, no el de Docker)**: escucha en el puerto **5434** (no el 5432 por defecto), usuario `postgres`; la contraseña solo está en los `.env` locales de esta laptop (no se versiona). Las bases `piensaya_auth` y `piensaya_users` se crearon a mano desde pgAdmin
+  - El Postgres del `docker-compose` (5433) también se levanta aquí, pero los `.env` de Windows siguen apuntando al local (5434). Para pasarse al de Docker basta cambiar las dos URLs por las de `.env.example` (se verificó que las migraciones se aplican bien ahí)
+- **Docker Desktop** debe estar abierto antes de arrancar. `backend/docker-compose.yml` levanta Postgres, Mongo, Redis, RabbitMQ y S3Mock (puertos 5433, 27017, 6379, 5672/15672, 9090)
+- **`.env` de cada servicio** reescritos completos (ver lista de variables en "Cómo correr en local"):
+  - `AUTH_DATABASE_URL` / `USER_DATABASE_URL` = `postgresql://postgres:<contraseña>@localhost:5434/<base>`
+  - `PORT` explícito en los 5 servicios (3000 a 3004)
+  - `JWT_SECRET`, `JWT_REFRESH_SECRET` e `INTERNAL_SERVICE_TOKEN` son cadenas aleatorias de 64 hex, con `JWT_SECRET` idéntico en los 5 e `INTERNAL_SERVICE_TOKEN` idéntico en auth y user-follow
+  - user-follow-service: `STORAGE_ENDPOINT=http://localhost:9090`, `STORAGE_BUCKET=piensaya-media`, `STORAGE_REGION=us-east-1`, `RABBITMQ_URL=amqp://guest:guest@localhost:5672`, `RABBITMQ_FEED_QUEUE=feed_events`
+  - feed-service: se añadió `POST_SERVICE_URL=http://localhost:3002`
+  - `frontend/.env.local` ya apuntaba a `localhost:3000` a `3004` (sin cambios)
+- **Prisma**: las bases ya tenían tablas creadas con `db push` y sin historial, así que `prisma migrate deploy` fallaba con **P3005**. Se resolvió con `prisma db push` (sincroniza sin borrar datos) + `prisma migrate resolve --applied <migración>` para cada migración. Ya quedaron con historial: `start-all.sh` aplica las migraciones nuevas solo
+- **Arranque**: `bash ./start-all.sh` desde la raíz (Git Bash; funciona igual que en la Mac). Instalar antes con `pnpm install` en cada servicio y en `frontend/`. Logs en `logs/<servicio>.log`
+- **Para detener todo** (si se lanzó en segundo plano): cerrar la terminal que corre el script, o terminar los procesos `node` y luego `docker compose -f backend/docker-compose.yml stop`
+- `GET /` del feed-service devuelve 404; es normal (no tiene `/docs`, solo `/feed/*`)
+
 ## Próximos pasos
 
 - Revisar en GitHub (en uno o dos días) que @claude ya no aparezca en "Contributors"; si sigue, escribir a GitHub Support
-- Persistir la reacción del usuario en el backend (hoy solo se guarda en localStorage) y añadir endpoint de sugerencias de usuarios
+- Terminar el diagrama de arquitectura y el README (pendiente a propósito)
+- Desplegar (AWS u otro) para tener demo en línea (pendiente a propósito, después del diagrama)
+- Añadir endpoint de sugerencias de usuarios
+- Tests de integración / e2e del flujo post → RabbitMQ → feed (hoy solo unitarios)
+- Rate limiting y paginación en followers/following
 - Implementar Google OAuth (desde el frontend)
-- Evaluar cuándo abordar AWS/infra vs. seguir cerrando huecos del backend (paginación, búsqueda, rate limiting)
 - Considerar bajar `deleteOutDir` a `false` en los 5 `nest-cli.json` para eliminar la carrera de compilación de raíz, en vez de depender de que `start-all.sh` compile en serie

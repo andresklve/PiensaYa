@@ -212,7 +212,12 @@ export class FeedService {
   // antigüedad). Nunca incluye las publicaciones propias. Sin seguidos, todo es
   // descubrimiento: un usuario nuevo nunca ve el feed vacío.
   // ---------------------------------------------------------------------------
-  async forYou(userId: string, type: PostKind | undefined, limit: number): Promise<ForYouDto> {
+  async forYou(
+    userId: string,
+    type: PostKind | undefined,
+    limit: number,
+    authorization?: string,
+  ): Promise<ForYouDto> {
     await this.ensureSynced(userId);
     const [followingIds, feedIds] = await Promise.all([
       this.usersClient.getFollowingIds(userId).catch(() => [] as string[]),
@@ -229,14 +234,16 @@ export class FeedService {
 
     let discovery: PostView[] = [];
     try {
-      discovery = (await this.postsClient.list({ excludeAuthorId: userId, type, limit: DISCOVERY_POOL }))
+      discovery = (
+        await this.postsClient.list({ excludeAuthorId: userId, type, limit: DISCOVERY_POOL }, authorization)
+      )
         .filter((p) => !following.has(p.authorId))
         .sort((a, b) => discoveryScore(b) - discoveryScore(a));
     } catch (error) {
       this.logger.warn(`Descubrimiento no disponible: ${(error as Error).message}`);
     }
 
-    const followPosts = await this.postsClient.batch(followIds);
+    const followPosts = await this.postsClient.batch(followIds, authorization);
 
     const items: ForYouItemDto[] = [];
     let f = 0;
