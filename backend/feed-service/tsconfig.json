@@ -14,7 +14,7 @@
     "types": ["node", "jest"],
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "skipLibCheck": true,
     "strict": true,
     "strictPropertyInitialization": false

@@ -1,0 +1,14 @@
+# Saltos de línea LF en todos los sistemas (Mac y Windows), sin importar
+# core.autocrlf: así Prettier, los diffs y los scripts .sh coinciden.
+* text=auto eol=lf
+
+# Binarios: nunca convertir.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.pdf binary
