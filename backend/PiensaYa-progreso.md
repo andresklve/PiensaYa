@@ -1,6 +1,6 @@
 # PiensaYa — Estado del proyecto
 
-Última actualización: 10 de octubre, 2026 (Mensajes separados en **Contactos / Solicitudes**; antes: Postgres en Docker + `.env.example`, reacción propia persistida, CI con GitHub Actions, configuración de la laptop Windows)
+Última actualización: 10 de octubre, 2026 (Mejoras de chat, sugerencias, paginación, rate limiting, tests e2e y fix de carrera en el feed; antes: Contactos / Solicitudes, Postgres en Docker + `.env.example`, reacción propia persistida, CI con GitHub Actions, configuración de la laptop Windows)
 
 ## Qué es
 
@@ -49,7 +49,7 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 
 - Línea de evento (Post → RabbitMQ → Feed) = **asíncrona**, con reintento automático (nack) si el User & Follow Service está caído — el post nunca se pierde
 - Línea Feed → User & Follow Service = **síncrona** (REST, "¿quiénes siguen a este autor?")
-- Al eliminar un post, se publica `post_deleted` y desaparece de todos los feeds al instante
+- Al eliminar un post, se publica `post_deleted` y desaparece de todos los feeds al instante. Deja una **lápida** en Redis (`feeddeleted:{postId}`, 7 días) para que un `post_created` que se procese después (en paralelo o reintentado) no lo vuelva a meter
 
 ### Autenticación entre microservicios
 
@@ -84,14 +84,15 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 - **TanStack Query** como capa de datos (`lib/queries.ts`): caché por clave, mutaciones optimistas con rollback (seguir, reaccionar, publicar, comentar, borrar) e invalidación de todas las vistas afectadas. Seguir a alguien actualiza al instante botón, sugerencias, índice y contadores
 - Componentes base en `components/ui.tsx` (Button, Input, Avatar, PageHeader, etc.); reacciones y comentarios en `components/post-interactions.tsx`; íconos `lucide-react`
 - La reacción propia viene del backend (`myReaction` en cada publicación), así que se ve igual en cualquier navegador o dispositivo. Las lecturas públicas de posts mandan el token si hay sesión (`auth: 'optional'` en `lib/api.ts`)
-- Limitación conocida: no existe endpoint de sugerencias; "Compañeros por descubrir" propone autores recientes que aún no sigues
+- "Compañeros por descubrir" usa `GET /users/me/suggestions`: primero amigos de amigos (con "Lo siguen N personas que sigues"), luego los más seguidos y los más nuevos
 - Tus propias publicaciones no aparecen en "Para ti" ni en Explorar; solo en el bloque **"Actividad en tus publicaciones"** cuando otra persona comentó o reaccionó y aún no lo viste (se marca visto en el servidor tras 1,5 s en pantalla o al abrirla; vuelve si llega actividad nueva)
 - Hay un hook `useMounted` (`lib/use-mounted.ts`) para evitar errores de hidratación en UI que depende de la sesión (localStorage)
 - Historial: se probó primero un estilo editorial "Minimalist Monochrome" (serif, esquinas rectas, titulares gigantes) y se descartó por poco práctico; se rehízo desde cero
 
 **Testing**
-- Jest, con tests unitarios por servicio (86 tests en total entre los 5)
-- **CI con GitHub Actions** (`.github/workflows/ci.yml`): en cada push a `main` y en cada PR corre, por servicio, `install --frozen-lockfile` → `prisma generate` (si aplica) → lint (oxlint) → build → tests; y en el frontend lint (eslint) → `tsc --noEmit` → `next build`
+- Jest, con tests unitarios por servicio (101 tests en total entre los 5)
+- **Tests e2e** (`e2e/piensaya.e2e.test.mjs`, test runner de Node, sin dependencias) contra los 5 servicios reales: registro → perfil por token interno → follow → sugerencias → post → RabbitMQ → feed → reacción → borrado → solicitudes de chat. Local: con todo levantado, `node --test "e2e/*.test.mjs"`
+- **CI con GitHub Actions** (`.github/workflows/ci.yml`): en cada push a `main` y en cada PR corre, por servicio, `install --frozen-lockfile` → `prisma generate` (si aplica) → lint (oxlint) → `tsc --noEmit` → build → tests; un job **e2e** que levanta Docker Compose y los 5 servicios en el runner y corre la suite e2e; y en el frontend lint (eslint) → `tsc --noEmit` → `next build`
 
 ## Decisiones de diseño tomadas
 
@@ -111,7 +112,6 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 - API Gateway (hoy el frontend tendría que saber el puerto de cada servicio)
 - Patrón Saga formal para fallos distribuidos (hoy el Feed Service resuelve con reintento simple vía nack a RabbitMQ)
 - Verificación de email al registrarse (pendiente por limitación de servicios gratuitos sin dominio propio)
-- Paginación en followers/following, subida real de avatar (storage tipo S3), tests e2e, rate limiting
 - Diagrama de arquitectura completo — en progreso en Excalidraw
 
 ## Progreso técnico
@@ -151,6 +151,13 @@ Post Service --publica evento: post_created--> RabbitMQ --entrega--> Feed Servic
 28. ✅ **CI con GitHub Actions**: 5 servicios en matriz + frontend (ver "Testing")
 29. ✅ **PR #9 mergeado a `main`** (puntos 26–28, CI en verde) y rama borrada
 30. ✅ **Mensajes: Contactos / Solicitudes** (como en otras redes), directo en `main`. Contacto = alguien a quien sigues, a quien le escribiste o cuya solicitud aceptaste; el resto de conversaciones van a **Solicitudes**. Chat Service: `GET /chat/conversations` trae `accepted` (le escribí o acepté) y `POST /chat/conversations/:otherUserId/accept` (idempotente, colección `accepted_contacts`); responder también acepta. El "seguir" lo combina el frontend con la lista de seguidos (`useInbox` en `lib/queries.ts`), así el Chat Service no depende del User Service. En la solicitud se puede **Aceptar** y/o **Seguir**, desde la lista o dentro de la conversación (aviso arriba del cuadro de texto). Mientras es solicitud no se marca como leída: quien escribió no ve "Visto" hasta que aceptas
+31. ✅ **Pulido de mensajes**: lo que llega con la conversación abierta se marca como leído al instante; contador de conversaciones sin leer en "Mensajes" (índice y barra inferior), que se actualiza por socket en cualquier página; sin parpadeo al cambiar de pestaña; **"Cargar mensajes anteriores"** (páginas de 30 con `before`, sin perder la posición del scroll)
+32. ✅ **Tope de solicitudes**: mientras no te acepten (responder, "Aceptar" o seguirte), solo puedes enviar **3 mensajes** a esa persona (403). El Chat Service consulta `GET /users/:userId/following/:targetId` del User & Follow Service solo al llegar al tope
+33. ✅ **Sugerencias**: `GET /users/me/suggestions` (amigos de amigos → más seguidos → más nuevos) en el panel derecho
+34. ✅ **Paginación de seguidores/seguidos**: `?limit=&offset=` opcional (sin `limit` devuelve todo, para el fan-out y el "¿lo sigo?"); el perfil carga de a 20 con "Ver más" y solo al abrir la pestaña
+35. ✅ **Rate limiting** con `@nestjs/throttler` (por IP, solo rutas sensibles): login 10/min, registro 5/min, refresh 30/min, cambio de contraseña 5/min, publicar 10/min, comentar 20/min, reaccionar 60/min, mensajes 30/min (también por WebSocket, por usuario). `THROTTLE_DISABLED=true` lo apaga. El frontend traduce el 429
+36. ✅ **Tests e2e + job en CI** (ver "Testing"). Encontraron un bug real: si un post se borraba justo después de publicarse, `post_deleted` se procesaba antes que `post_created` y el post reaparecía en los feeds → arreglado con la lápida
+37. ✅ **Tooling**: `.gitattributes` (LF en Mac y Windows) y `tsc --noEmit` limpio en los 5 servicios (`rootDir: "."` en `tsconfig.json`; el build sigue usando `./src` desde `tsconfig.build.json`), ahora también en CI
 
 ## Flujo de trabajo con git
 
@@ -214,8 +221,6 @@ Configurado el 10 de octubre, 2026. Todo corre y fue verificado (los 5 servicios
 - Revisar en GitHub (en uno o dos días) que @claude ya no aparezca en "Contributors"; si sigue, escribir a GitHub Support
 - Terminar el diagrama de arquitectura y el README (pendiente a propósito)
 - Desplegar (AWS u otro) para tener demo en línea (pendiente a propósito, después del diagrama)
-- Añadir endpoint de sugerencias de usuarios
-- Tests de integración / e2e del flujo post → RabbitMQ → feed (hoy solo unitarios)
-- Rate limiting y paginación en followers/following
+- Rate limiting en el User & Follow Service (seguir, subir imágenes) y por usuario en vez de por IP detrás de un proxy
 - Implementar Google OAuth (desde el frontend)
 - Considerar bajar `deleteOutDir` a `false` en los 5 `nest-cli.json` para eliminar la carrera de compilación de raíz, en vez de depender de que `start-all.sh` compile en serie
