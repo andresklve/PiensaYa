@@ -9,9 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@tanstack/react-query": "^5.104.1",
+    "framer-motion": "^14.0.0",
+    "lucide-react": "^1.54.0",
     "next": "16.4.0",
     "react": "19.3.0",
     "react-dom": "19.3.0",
+    "react-easy-crop": "^6.2.4",
     "socket.io-client": "^4.8.4"
   },
   "devDependencies": {
