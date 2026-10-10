@@ -18,6 +18,9 @@ export class PostResponseDto {
   @ApiProperty()
   content: string;
 
+  @ApiProperty({ type: [String], example: ['calculo2'], description: 'Hashtags normalizados' })
+  tags: string[];
+
   @ApiProperty()
   commentsCount: number;
 
