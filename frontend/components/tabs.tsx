@@ -3,8 +3,6 @@
 import { motion } from 'framer-motion';
 import { cx } from './ui';
 
-// El indicador es un trazo de marcador detrás de la etiqueta activa que se
-// desliza (layoutId) de una pestaña a otra.
 export function Tabs<T extends string>({
   tabs,
   value,

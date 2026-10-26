@@ -25,7 +25,6 @@ export function Card({
 type ButtonVariant = 'primary' | 'accent' | 'secondary' | 'ghost' | 'danger';
 type ButtonSize = 'sm' | 'md' | 'lg';
 
-// Esquinas de 12px en vez de píldoras: el lenguaje de fichas del cuaderno.
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: 'bg-fg text-bg hover:opacity-90',
   accent: 'bg-accent text-accent-ink hover:brightness-95',
@@ -78,7 +77,6 @@ export function ButtonLink({
   return <Link {...props} className={buttonClass(variant, size, className)} />;
 }
 
-// Enlace de texto: se subraya con marcador al pasar el cursor.
 export function TextLink({ className, children, ...props }: React.ComponentProps<typeof Link>) {
   return (
     <Link {...props} className={cx('group font-bold text-fg underline decoration-fg/30 underline-offset-4 hover:decoration-transparent', className)}>
@@ -137,7 +135,6 @@ export function Notice({ children }: { children: React.ReactNode }) {
   );
 }
 
-// Tres trazos de marcador que se pintan en secuencia.
 export function Spinner({ label = 'Cargando' }: { label?: string }) {
   return (
     <div role="status" className="flex justify-center py-12">
@@ -211,7 +208,6 @@ export function Avatar({
   );
 }
 
-// Encabezado fijo bajo la barra superior: título, volver y acciones.
 export function PageHeader({
   title,
   subtitle,
@@ -249,7 +245,6 @@ export function PageHeader({
   );
 }
 
-// Estado vacío como hoja punteada de cuaderno.
 export function EmptyState({
   title,
   body,

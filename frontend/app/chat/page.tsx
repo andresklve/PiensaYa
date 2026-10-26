@@ -27,7 +27,6 @@ function ChatList({ session }: { session: Session }) {
   const items = box === 'contacts' ? contacts : requests;
   const profiles = useProfiles([...(contacts ?? []), ...(requests ?? [])].map((c) => c.otherUserId));
 
-  // Al llegar un mensaje nuevo por socket, se invalida la lista de conversaciones.
   const refresh = useCallback(() => void qc.invalidateQueries({ queryKey: qk.conversations() }), [qc]);
   const { connected } = useChatSocket(refresh);
 

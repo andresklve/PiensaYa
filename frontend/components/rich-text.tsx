@@ -12,7 +12,6 @@ export function tagHref(tag: string) {
   return `/explorar?tag=${encodeURIComponent(normalizeTag(tag))}`;
 }
 
-// Texto con los #hashtags convertidos en enlaces al tema en Explorar.
 export function RichText({ text, className }: { text: string; className?: string }) {
   const parts: React.ReactNode[] = [];
   let last = 0;
@@ -35,7 +34,6 @@ export function RichText({ text, className }: { text: string; className?: string
   return <span className={cx(className)}>{parts}</span>;
 }
 
-// Fila de hashtags para la ficha de un artículo.
 export function TagChips({ tags, className }: { tags?: string[]; className?: string }) {
   if (!tags?.length) return null;
   return (

@@ -5,8 +5,7 @@ mkdir -p logs
 
 BACKEND_SERVICES=(auth-service user-follow-service post-service chat-service feed-service)
 
-# Primera vez en una máquina: se crean los .env desde las plantillas. Los que
-# ya existen no se tocan (pueden apuntar a otro Postgres, p. ej. uno local).
+# Crea los .env que falten desde las plantillas; los existentes no se tocan.
 for name in "${BACKEND_SERVICES[@]}"; do
   if [ ! -f "backend/$name/.env" ]; then
     cp "backend/$name/.env.example" "backend/$name/.env"
@@ -31,12 +30,8 @@ done
 
 PIDS=()
 
-# Compilamos uno por uno (no en paralelo). nest-cli borra dist/ de forma
-# asíncrona al compilar (deleteOutDir): si varios servicios compilan a la vez
-# bajo carga, ese borrado puede terminar DESPUÉS de que el archivo ya se
-# escribió, eliminándolo otra vez y dejando "Cannot find module dist/main".
-# Compilando en serie evitamos esa carrera. Para desarrollo activo de un
-# servicio puntual, sigue usando "pnpm start:dev" dentro de su carpeta.
+# En serie: compilar en paralelo hace que el borrado asíncrono de dist/
+# (deleteOutDir) a veces elimine dist/main.js recién generado.
 for name in "${BACKEND_SERVICES[@]}"; do
   echo "Compilando $name..."
   # Un .tsbuildinfo viejo hace que tsc no re-emita nada tras el borrado de dist/.

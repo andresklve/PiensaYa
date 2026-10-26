@@ -20,7 +20,6 @@ import { Post, REACTIONS, ReactionType } from '@/lib/types';
 import { Avatar, Button, ErrorText, cx, timeAgo } from './ui';
 import { RichText } from './rich-text';
 
-// Reacciones monocromas: el único color es el amarillo de la reacción propia.
 export const REACTION_ICON: Record<ReactionType, LucideIcon> = {
   LIKE: Highlighter,
   INTERESANTE: Lightbulb,
@@ -231,7 +230,6 @@ export function ReactionBar({
   );
 }
 
-// Los tres tipos más usados, apilados, como resumen rápido.
 function ReactionSummary({ post }: { post: Post }) {
   const top = REACTIONS.map((r) => ({ ...r, n: post.reactions[r.type] ?? 0 }))
     .filter((r) => r.n > 0)

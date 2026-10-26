@@ -128,10 +128,8 @@ export class FeedService {
     return { items, page, limit, total: total - orphans.length };
   }
 
-  // ---------------------------------------------------------------------------
   // Seguir / dejar de seguir: el fan-out solo reparte publicaciones NUEVAS, así
   // que al seguir a alguien se traen sus últimas publicaciones al feed.
-  // ---------------------------------------------------------------------------
   async backfill(event: FollowEvent): Promise<number> {
     const [posts, author] = await Promise.all([
       this.postsClient.list({ authorId: event.followingId, limit: BACKFILL_LIMIT }),
@@ -231,12 +229,10 @@ export class FeedService {
     }
   }
 
-  // ---------------------------------------------------------------------------
   // "Para ti": mezcla lo de quienes sigues (más reciente primero) con
   // publicaciones de descubrimiento (por interacción, con decaimiento por
   // antigüedad). Nunca incluye las publicaciones propias. Sin seguidos, todo es
   // descubrimiento: un usuario nuevo nunca ve el feed vacío.
-  // ---------------------------------------------------------------------------
   async forYou(
     userId: string,
     type: PostKind | undefined,

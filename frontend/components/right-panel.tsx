@@ -19,8 +19,6 @@ export function RightPanel() {
   );
 }
 
-// Tarjeta "tu cuaderno": perfil propio con contadores reales. Lee de la misma
-// caché que el resto de la app, así seguir a alguien actualiza "Siguiendo".
 function MySummary() {
   const { session } = useAuth();
   const { data: me } = useProfile(session?.userId);
@@ -65,7 +63,6 @@ function MySummary() {
   );
 }
 
-// Los hashtags más usados de la comunidad.
 function TrendingTags() {
   const { data: tags } = useTagSuggestions('');
   if (!tags?.length) return null;
