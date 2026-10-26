@@ -53,9 +53,7 @@ function must({ status, data }, ok, what) {
   return data;
 }
 
-// ---------------------------------------------------------------------------
 // Datos
-// ---------------------------------------------------------------------------
 const PEOPLE = [
   { key: 'demo', username: 'demo', firstName: 'Demo', lastName: 'PiensaYa', bio: 'Cuenta de demostración para explorar PiensaYa. Estudiante de Ingeniería de Software.' },
   { key: 'ana', username: 'ana_torres', firstName: 'Ana', lastName: 'Torres', bio: 'Matemáticas aplicadas. Escribo lo que me hubiera gustado leer antes de cada examen.' },

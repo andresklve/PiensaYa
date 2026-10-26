@@ -6,8 +6,6 @@ import { AuthProvider } from '@/lib/auth-context';
 import { Providers } from './providers';
 import { AppShell } from '@/components/app-shell';
 
-// Bricolage para títulos y marca; Atkinson Hyperlegible (pensada para máxima
-// legibilidad) para todo el texto de lectura e interfaz.
 const display = Bricolage_Grotesque({
   subsets: ['latin'],
   variable: '--font-bricolage',

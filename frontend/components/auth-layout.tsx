@@ -6,8 +6,6 @@ import { Highlighter, Lightbulb, MessageCircle } from 'lucide-react';
 import { Logo } from './nav';
 import { ThemeToggle } from './theme-toggle';
 
-// Pantallas sin sesión: a la izquierda una hoja de cuaderno con una ficha y un
-// apunte de muestra (decorativos); a la derecha el formulario.
 export function AuthLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-dvh lg:grid-cols-[minmax(0,1fr)_minmax(0,560px)]">

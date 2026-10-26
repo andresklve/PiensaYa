@@ -63,7 +63,7 @@ function Conversation({ session }: { session: Session }) {
     ? requests.some((c) => c.otherUserId === otherUserId)
     : undefined;
 
-  // Como en otras redes: quien te escribe no ve el «Visto» hasta que aceptas.
+  // Quien te escribe no ve el «Visto» hasta que aceptas.
   const markRead = useCallback(() => {
     api.chat
       .markRead(otherUserId)

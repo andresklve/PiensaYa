@@ -372,7 +372,6 @@ function PeopleList({
   );
 }
 
-// Foto de perfil y portada: se suben como archivo (no por URL).
 function EditImages({ profile }: { profile: Profile }) {
   const avatar = useProfileImage('avatar');
   const cover = useProfileImage('cover');

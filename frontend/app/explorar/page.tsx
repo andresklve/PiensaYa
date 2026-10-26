@@ -81,7 +81,6 @@ function Explorar({ session }: { session: Session }) {
           onSubmit={(e) => {
             e.preventDefault();
             const q = input.trim();
-            // "#tema" + Enter abre el tema directamente.
             if (q.startsWith('#') && normalizeTag(q).length >= 2) openTag(normalizeTag(q));
             else setTerm(input);
           }}

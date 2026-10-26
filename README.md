@@ -6,6 +6,18 @@ Plataforma social para estudiantes, al estilo **Medium + Twitter**: artículos l
 
 Es un proyecto de portafolio personal para explorar **arquitectura de microservicios** y **diseño de sistemas distribuidos**: comunicación síncrona y asíncrona, consistencia eventual, caché pre-calculada y tiempo real. No tiene fines comerciales ni afiliación institucional.
 
+### Pruébalo en un minuto
+
+Solo necesitas [Docker](https://www.docker.com/):
+
+```bash
+git clone https://github.com/andresklve/PiensaYa.git
+cd PiensaYa
+docker compose up -d
+```
+
+Abre **http://localhost:8080** y entra con **`demo`** / **`Demo12345`**. Los 12 contenedores (5 microservicios, frontend, Caddy, PostgreSQL, MongoDB, Redis, RabbitMQ y S3) arrancan con datos de demostración ya cargados. Para apagarlo: `docker compose down`.
+
 ---
 
 ## Contenido
@@ -153,13 +165,37 @@ Cada servicio documenta su API con **Swagger** en `/docs`, por ejemplo `http://l
 
 ## Cómo correrlo en local
 
-### Requisitos
+### Opción 1: todo en Docker (recomendada para probarlo)
+
+Requisito: [Docker](https://www.docker.com/) (Docker Desktop en Mac o Windows). No hace falta Node ni pnpm.
+
+```bash
+docker compose up -d            # usa las imágenes publicadas en Docker Hub
+docker compose up -d --build    # o compílalas desde este código
+```
+
+El [`docker-compose.yml`](docker-compose.yml) de la raíz levanta el mismo stack que producción, con contraseñas fijas de demo y sin rate limiting, y un contenedor `seed` que carga los datos de demostración y termina:
+
+| | URL |
+|---|---|
+| Aplicación | http://localhost:8080 (`demo` / `Demo12345`) |
+| API (Caddy reparte por prefijo) | http://127.0.0.1:8080 |
+
+Comandos útiles: `docker compose ps`, `docker compose logs -f posts`, `docker compose down` (conserva los datos) y `docker compose down -v` (los borra). Si el puerto 8080 está ocupado: `HTTP_PORT=9000 docker compose up -d`.
+
+> Compilar con `--build` consume bastante memoria: asigna al menos 6 GB a Docker Desktop (Settings → Resources).
+
+### Opción 2: entorno de desarrollo
+
+Para trabajar en el código, con cada servicio corriendo en Node.
+
+#### Requisitos
 
 - [Docker](https://www.docker.com/) (Docker Desktop en Mac o Windows)
 - [Node.js 24](https://nodejs.org/)
 - [pnpm 10](https://pnpm.io/)
 
-### Inicio rápido
+#### Inicio rápido
 
 ```bash
 git clone https://github.com/andresklve/PiensaYa.git
@@ -189,7 +225,7 @@ Cuando termina, queda disponible:
 
 > PostgreSQL se expone en el puerto **5433**, para no chocar con un Postgres instalado en la máquina.
 
-### Datos de demostración
+#### Datos de demostración
 
 Con los servicios corriendo, carga usuarios, publicaciones, comentarios, reacciones y conversaciones de ejemplo (así la app no se ve vacía):
 
@@ -199,7 +235,7 @@ node scripts/seed.mjs
 
 Después entra con la cuenta **`demo`** / **`Demo12345`**. El script es idempotente y respeta el rate limiting (espera unos dos minutos); si arrancas los servicios con `THROTTLE_DISABLED=true` es inmediato.
 
-### Desarrollo de un solo servicio
+#### Desarrollo de un solo servicio
 
 Para trabajar con hot-reload en un servicio puntual:
 
@@ -208,7 +244,7 @@ cd backend/post-service
 pnpm start:dev
 ```
 
-### Variables de entorno
+#### Variables de entorno
 
 Cada servicio tiene su `.env.example` documentado. Hay tres reglas importantes:
 
@@ -278,7 +314,8 @@ PiensaYa/
 ├── scripts/seed.mjs           # Datos de demostración
 ├── docs/screenshots/          # Capturas del README
 ├── .github/workflows/ci.yml   # Integración continua
-└── start-all.sh               # Levanta todo el entorno local
+├── docker-compose.yml         # Demo completa con un comando (docker compose up -d)
+└── start-all.sh               # Entorno de desarrollo (servicios en Node)
 ```
 
 ---

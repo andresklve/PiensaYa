@@ -141,6 +141,8 @@ jobs:
           cp .env.example .env
           ./generate-secrets.sh >> .env
           docker compose -f docker-compose.prod.yml config -q
+      - name: Validar docker-compose.yml (demo)
+        run: docker compose config -q
 
   frontend:
     runs-on: ubuntu-latest

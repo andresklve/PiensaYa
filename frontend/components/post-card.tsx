@@ -11,9 +11,6 @@ import { ReactionBar } from './post-interactions';
 import { RichText, TagChips } from './rich-text';
 import { Avatar, ErrorText, cx, fullDate, timeAgo } from './ui';
 
-// Tres formatos con jerarquía propia: el artículo es una ficha con borde para
-// lectura larga; el apunte es texto libre con la hora en el margen; la
-// opinión es una cita con comillas grandes.
 // Sin estado propio: la publicación viene de la caché, así una reacción hecha
 // en el detalle se ve igual en el feed y en el perfil.
 export function PostCard({

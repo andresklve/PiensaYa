@@ -1,0 +1,222 @@
+# Demo local: docker compose up -d  ->  http://localhost:8080 (demo / Demo12345)
+# Contraseñas fijas solo para uso local. Para un servidor real, ver deploy/.
+name: piensaya-demo
+
+x-env: &env
+  JWT_SECRET: demo-jwt-secret
+  INTERNAL_SERVICE_TOKEN: demo-internal-token
+  TRUST_PROXY: "true"
+  CORS_ORIGIN: http://localhost:8080
+  THROTTLE_DISABLED: "true"
+
+x-service: &service
+  restart: unless-stopped
+  depends_on: &infra
+    postgres: { condition: service_healthy }
+    mongo: { condition: service_healthy }
+    redis: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+x-node-health: &node-health
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 20s
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    environment:
+      APP_HOST: http://localhost
+      API_HOST: http://127.0.0.1
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - frontend
+      - auth
+      - users
+      - posts
+      - chat
+      - feed
+
+  # --- Servicios -----------------------------------------------------------
+  auth:
+    <<: *service
+    image: andresinfantas/piensaya:auth
+    build: { context: backend, args: { SERVICE: auth-service } }
+    environment:
+      <<: *env
+      PORT: 3000
+      AUTH_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/piensaya_auth
+      JWT_REFRESH_SECRET: demo-jwt-refresh-secret
+      JWT_ACCESS_EXPIRES_SECONDS: "900"
+      JWT_REFRESH_EXPIRES_SECONDS: "604800"
+      USER_SERVICE_URL: http://users:3001
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  users:
+    <<: *service
+    image: andresinfantas/piensaya:users
+    build: { context: backend, args: { SERVICE: user-follow-service } }
+    environment:
+      <<: *env
+      PORT: 3001
+      USER_DATABASE_URL: postgresql://postgres:postgres@postgres:5432/piensaya_users
+      STORAGE_ENDPOINT: http://s3:9090
+      STORAGE_BUCKET: piensaya-media
+      STORAGE_REGION: us-east-1
+      STORAGE_PUBLIC_URL: http://127.0.0.1:8080/piensaya-media
+      RABBITMQ_URL: amqp://piensaya:piensaya@rabbitmq:5672
+      RABBITMQ_FEED_QUEUE: feed_events
+    depends_on:
+      <<: *infra
+      s3: { condition: service_started }
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3001/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  posts:
+    <<: *service
+    image: andresinfantas/piensaya:posts
+    build: { context: backend, args: { SERVICE: post-service } }
+    environment:
+      <<: *env
+      PORT: 3002
+      MONGO_URI: mongodb://piensaya:piensaya@mongo:27017/piensaya_posts?authSource=admin
+      RABBITMQ_URL: amqp://piensaya:piensaya@rabbitmq:5672
+      RABBITMQ_FEED_QUEUE: feed_events
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3002/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  chat:
+    <<: *service
+    image: andresinfantas/piensaya:chat
+    build: { context: backend, args: { SERVICE: chat-service } }
+    environment:
+      <<: *env
+      PORT: 3003
+      MONGO_URI: mongodb://piensaya:piensaya@mongo:27017/piensaya_chat?authSource=admin
+      REDIS_URL: redis://redis:6379
+      USER_SERVICE_URL: http://users:3001
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3003/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  feed:
+    <<: *service
+    image: andresinfantas/piensaya:feed
+    build: { context: backend, args: { SERVICE: feed-service } }
+    environment:
+      <<: *env
+      PORT: 3004
+      REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://piensaya:piensaya@rabbitmq:5672
+      RABBITMQ_FEED_QUEUE: feed_events
+      USER_SERVICE_URL: http://users:3001
+      POST_SERVICE_URL: http://posts:3002
+      FEED_MAX_LENGTH: "500"
+    healthcheck:
+      <<: *node-health
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3004/docs').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+
+  frontend:
+    restart: unless-stopped
+    image: andresinfantas/piensaya:frontend
+    build:
+      context: frontend
+      args:
+        NEXT_PUBLIC_AUTH_URL: http://127.0.0.1:8080
+        NEXT_PUBLIC_USERS_URL: http://127.0.0.1:8080
+        NEXT_PUBLIC_POSTS_URL: http://127.0.0.1:8080
+        NEXT_PUBLIC_CHAT_URL: http://127.0.0.1:8080
+        NEXT_PUBLIC_FEED_URL: http://127.0.0.1:8080
+
+  seed:
+    image: node:24-alpine
+    command: ["node", "/scripts/seed.mjs"]
+    volumes:
+      - ./scripts:/scripts:ro
+    environment:
+      AUTH_URL: http://auth:3000
+      USERS_URL: http://users:3001
+      POSTS_URL: http://posts:3002
+      CHAT_URL: http://chat:3003
+    depends_on:
+      auth: { condition: service_healthy }
+      users: { condition: service_healthy }
+      posts: { condition: service_healthy }
+      chat: { condition: service_healthy }
+      feed: { condition: service_healthy }
+
+  # --- Infraestructura -----------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./backend/docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: piensaya
+      MONGO_INITDB_ROOT_PASSWORD: piensaya
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: piensaya
+      RABBITMQ_DEFAULT_PASS: piensaya
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 20
+      start_period: 20s
+
+  s3:
+    image: adobe/s3mock:3.12.0
+    restart: unless-stopped
+    environment:
+      initialBuckets: piensaya-media
+      root: /data
+      retainFilesOnExit: "true"
+    volumes:
+      - s3-data:/data
+
+volumes:
+  postgres-data:
+  mongo-data:
+  s3-data:

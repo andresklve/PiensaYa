@@ -14,10 +14,6 @@ import { FilterChips, type Filter } from '@/components/filter-chips';
 import { OwnActivity } from '@/components/own-activity';
 import { ButtonLink, EmptyState, ErrorText, Spinner, cx } from '@/components/ui';
 
-// "Para ti" es la pestaña por defecto: mezcla 3 publicaciones de quienes sigues
-// por 1 de descubrimiento (Feed Service) y nunca muestra lo propio, salvo en
-// "Actividad en tus publicaciones" cuando alguien interactuó. Un usuario nuevo
-// ve solo descubrimiento, nunca un feed vacío.
 type Tab = 'all' | 'following';
 
 const EMPTY_BY_FILTER: Record<Filter, string> = {

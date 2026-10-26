@@ -19,7 +19,6 @@ const SPEC: Record<ImageKind, { aspect: number; width: number; height: number; t
   cover: { aspect: 3, width: 1500, height: 500, title: 'Foto de portada' },
 };
 
-// Selector + recorte + subida de la foto de perfil o la portada.
 // `children` recibe la función que abre el selector de archivos.
 export function ImagePicker({
   kind,
@@ -92,7 +91,6 @@ function CropAndUpload({
   const [progress, setProgress] = useState<number | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
 
-  // Vista previa en vivo del recorte final (miniatura).
   useEffect(() => {
     if (!area) return;
     let alive = true;
@@ -220,7 +218,6 @@ function CropAndUpload({
   );
 }
 
-// Recorta en un canvas y re-codifica a JPEG del tamaño final.
 async function cropToBlob(src: string, area: Area, width: number, height: number): Promise<Blob | null> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();

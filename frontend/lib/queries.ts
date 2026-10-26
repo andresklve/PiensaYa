@@ -25,10 +25,8 @@ import {
   SearchResult,
 } from './types';
 
-// ---------------------------------------------------------------------------
 // Claves de caché. Todas las vistas leen de aquí; una mutación actualiza o
 // invalida las claves afectadas y cada vista que las use se refresca sola.
-// ---------------------------------------------------------------------------
 export const qk = {
   profile: (userId: string) => ['profile', userId] as const,
   profileByUsername: (username: string) => ['profile-username', username] as const,
@@ -61,9 +59,7 @@ export function makeQueryClient() {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Perfiles
-// ---------------------------------------------------------------------------
 const loadProfile = (userId: string) => api.users.byId(userId).catch(() => null);
 
 export function useProfile(userId: string | undefined) {
@@ -145,9 +141,7 @@ export function useProfileImage(kind: ImageKind) {
   return { upload, remove };
 }
 
-// ---------------------------------------------------------------------------
 // Seguir / dejar de seguir
-// ---------------------------------------------------------------------------
 export function useFollowing(userId: string | undefined) {
   return useQuery({
     queryKey: qk.following(userId ?? ''),
@@ -235,7 +229,6 @@ export function useFollowMutation() {
   });
 }
 
-// Personas sugeridas por el User & Follow Service (amigos de amigos primero).
 export function useSuggestions() {
   const { session } = useAuth();
   return useQuery({
@@ -245,9 +238,7 @@ export function useSuggestions() {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Publicaciones
-// ---------------------------------------------------------------------------
 export function usePostList(
   params: { authorId?: string; excludeAuthorId?: string; tag?: string; type?: PostType; limit?: number },
   enabled = true,
@@ -278,7 +269,6 @@ export function useFollowingFeed(enabled: boolean) {
   });
 }
 
-// "Para ti" (Feed Service): 3 de seguidos por 1 de descubrimiento, sin lo propio.
 export function useForYou(type: PostType | undefined, enabled: boolean) {
   return useQuery({
     queryKey: qk.forYou(type),
@@ -300,9 +290,7 @@ export function useOwnActivity(enabled: boolean) {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Hashtags y búsqueda
-// ---------------------------------------------------------------------------
 
 // Igual que en el Post Service: minúsculas y sin tildes.
 export function normalizeTag(raw: string): string {
@@ -394,7 +382,6 @@ export function useCreatePost() {
   return useMutation({
     mutationFn: api.posts.create,
     onSuccess: (post) => {
-      // Aparece al instante arriba de las listas que la incluirían…
       for (const query of qc.getQueryCache().findAll({ queryKey: ['posts'] })) {
         const params = query.queryKey[1] as { authorId?: string; excludeAuthorId?: string; tag?: string; type?: PostType };
         if (
@@ -410,7 +397,6 @@ export function useCreatePost() {
         );
       }
       qc.setQueryData<Post[]>(qk.followingFeed(), (old) => (old ? [post, ...old] : old));
-      // …y luego se reconcilia con el servidor (los hashtags nuevos ya se sugieren).
       void qc.invalidateQueries({ queryKey: ['hashtags'] });
       void qc.invalidateQueries({ queryKey: ['search'] });
       void qc.invalidateQueries({ queryKey: ['posts'] });
@@ -460,9 +446,7 @@ export function useReactMutation() {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Comentarios
-// ---------------------------------------------------------------------------
 export function useComments(postId: string) {
   return useQuery({ queryKey: qk.comments(postId), queryFn: () => api.posts.comments(postId) });
 }
@@ -491,9 +475,7 @@ export function useRemoveComment(postId: string) {
   });
 }
 
-// ---------------------------------------------------------------------------
 // Mensajes: contactos y solicitudes
-// ---------------------------------------------------------------------------
 export function useConversations() {
   const { session } = useAuth();
   return useQuery<Conversation[]>({

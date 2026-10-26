@@ -9,8 +9,6 @@ import { cx } from './ui';
 
 const BARE_ROUTES = ['/', '/login', '/registro'];
 
-// Barra superior + índice (izquierda) + columna de contenido + panel (derecha).
-// Bajo lg el índice pasa a la barra inferior; bajo xl desaparece el panel.
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const bare = BARE_ROUTES.includes(pathname);

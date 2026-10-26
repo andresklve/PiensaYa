@@ -51,7 +51,6 @@ function UnreadBadge({ count, className }: { count: number; className?: string }
   );
 }
 
-// "piensa" + "Ya" subrayado con marcador.
 export function Logo({ className }: { className?: string }) {
   return (
     <span className={cx('font-display text-[22px] font-extrabold leading-none tracking-[-0.03em]', className)}>
@@ -214,7 +213,6 @@ function AccountMenu() {
   );
 }
 
-// Columna izquierda en escritorio: navegación + las personas que sigues.
 export function IndexNav() {
   const isActive = useActive();
   const unread = useUnreadConversations();
